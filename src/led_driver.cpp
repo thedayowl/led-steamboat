@@ -1,0 +1,215 @@
+// led_driver.cpp - see led_driver.h
+#include <Arduino.h>
+#include <string.h>
+#include "esp_idf_version.h"
+#include "config.h"
+#include "led_driver.h"
+
+#if ESP_IDF_VERSION_MAJOR >= 5
+  #include "driver/rmt_tx.h"
+  #include "driver/rmt_encoder.h"
+#else
+  #include "driver/rmt.h"
+#endif
+
+namespace Leds {
+
+static const uint8_t kMaxCh = 4;
+
+static uint8_t  s_numCh = 0;
+static uint8_t  s_pins[kMaxCh];
+static uint16_t s_count[kMaxCh];
+static bool     s_ok[kMaxCh];
+static bool     s_attached[kMaxCh];
+static uint8_t  s_render[kMaxCh][MAX_LEDS_PER_CHANNEL * 3];  // what effects draw into
+static uint8_t  s_out[kMaxCh][MAX_LEDS_PER_CHANNEL * 3];     // what goes on the wire
+
+// Byte positions of R,G,B in the wire order for each ColorOrder
+static const uint8_t kOrderMap[ORDER_COUNT][3] = {
+  {0, 1, 2},  // RGB: r->0 g->1 b->2
+  {0, 2, 1},  // RBG
+  {1, 0, 2},  // GRB
+  {2, 0, 1},  // GBR
+  {1, 2, 0},  // BRG
+  {2, 1, 0},  // BGR
+};
+
+#if ESP_IDF_VERSION_MAJOR >= 5
+// ---------------------------------------------------------------- ESP-IDF 5
+// 10 MHz resolution: 1 tick = 100 ns. Bit period 1.2 us (~830 kHz).
+static rmt_channel_handle_t s_rmt[kMaxCh];
+static rmt_encoder_handle_t s_enc[kMaxCh];
+
+static bool createChannel(uint8_t ch) {
+  rmt_tx_channel_config_t cfg;
+  memset(&cfg, 0, sizeof(cfg));
+  cfg.gpio_num          = (gpio_num_t)s_pins[ch];
+  cfg.clk_src           = RMT_CLK_SRC_DEFAULT;
+  cfg.resolution_hz     = 10000000;
+  cfg.mem_block_symbols = 128;   // 2 blocks per channel: fewer glitches when Wi-Fi is busy
+  cfg.trans_queue_depth = 2;
+  if (rmt_new_tx_channel(&cfg, &s_rmt[ch]) != ESP_OK) {
+    cfg.mem_block_symbols = 64;
+    if (rmt_new_tx_channel(&cfg, &s_rmt[ch]) != ESP_OK) { s_rmt[ch] = NULL; return false; }
+  }
+  if (rmt_enable(s_rmt[ch]) != ESP_OK) { rmt_del_channel(s_rmt[ch]); s_rmt[ch] = NULL; return false; }
+  return true;
+}
+
+static bool hwInit(uint8_t ch) {
+  rmt_bytes_encoder_config_t ec;
+  memset(&ec, 0, sizeof(ec));
+  ec.bit0.level0 = 1; ec.bit0.duration0 = 3;  // 0: 300 ns high
+  ec.bit0.level1 = 0; ec.bit0.duration1 = 9;  //    900 ns low
+  ec.bit1.level0 = 1; ec.bit1.duration0 = 9;  // 1: 900 ns high
+  ec.bit1.level1 = 0; ec.bit1.duration1 = 3;  //    300 ns low
+  ec.flags.msb_first = 1;
+  if (rmt_new_bytes_encoder(&ec, &s_enc[ch]) != ESP_OK) return false;
+  return createChannel(ch);
+}
+
+static void hwStart(uint8_t ch, const uint8_t* data, size_t len) {
+  rmt_transmit_config_t tc;
+  memset(&tc, 0, sizeof(tc));
+  tc.loop_count = 0;
+  rmt_transmit(s_rmt[ch], s_enc[ch], data, len, &tc);
+}
+
+static void hwWait(uint8_t ch) { rmt_tx_wait_all_done(s_rmt[ch], 100); }
+
+static void hwRelease(uint8_t ch) {
+  if (s_rmt[ch]) {
+    rmt_tx_wait_all_done(s_rmt[ch], 100);
+    rmt_disable(s_rmt[ch]);
+    rmt_del_channel(s_rmt[ch]);
+    s_rmt[ch] = NULL;
+  }
+}
+
+static bool hwAttach(uint8_t ch) { return s_rmt[ch] ? true : createChannel(ch); }
+
+#else
+// ---------------------------------------------------------------- ESP-IDF 4.4
+// APB 80 MHz / 2 = 40 MHz: 1 tick = 25 ns. Bit period 1.25 us (800 kHz).
+// Channels 0,2,4,6 so each can use two RMT memory blocks.
+static const rmt_channel_t kRmtCh[kMaxCh] = { RMT_CHANNEL_0, RMT_CHANNEL_2, RMT_CHANNEL_4, RMT_CHANNEL_6 };
+#define T0H 14   // 350 ns
+#define T0L 36   // 900 ns
+#define T1H 36   // 900 ns
+#define T1L 14   // 350 ns
+
+static void IRAM_ATTR rmtAdapter(const void* src, rmt_item32_t* dest, size_t src_size,
+                                 size_t wanted_num, size_t* translated_size, size_t* item_num) {
+  if (src == NULL || dest == NULL) { *translated_size = 0; *item_num = 0; return; }
+  rmt_item32_t bit0, bit1;
+  bit0.level0 = 1; bit0.duration0 = T0H; bit0.level1 = 0; bit0.duration1 = T0L;
+  bit1.level0 = 1; bit1.duration0 = T1H; bit1.level1 = 0; bit1.duration1 = T1L;
+  size_t size = 0, num = 0;
+  const uint8_t* psrc = (const uint8_t*)src;
+  rmt_item32_t* pdest = dest;
+  while (size < src_size && num < wanted_num) {
+    uint8_t b = *psrc;
+    for (int i = 0; i < 8; i++) {
+      pdest->val = (b & (1 << (7 - i))) ? bit1.val : bit0.val;
+      num++; pdest++;
+    }
+    size++; psrc++;
+  }
+  *translated_size = size;
+  *item_num = num;
+}
+
+static bool hwInit(uint8_t ch) {
+  rmt_config_t c = RMT_DEFAULT_CONFIG_TX((gpio_num_t)s_pins[ch], kRmtCh[ch]);
+  c.clk_div = 2;
+  c.mem_block_num = 2;
+  c.tx_config.idle_output_en = true;
+  c.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
+  if (rmt_config(&c) != ESP_OK) return false;
+  if (rmt_driver_install(c.channel, 0, 0) != ESP_OK) return false;
+  if (rmt_translator_init(c.channel, rmtAdapter) != ESP_OK) return false;
+  return true;
+}
+
+static void hwStart(uint8_t ch, const uint8_t* data, size_t len) {
+  rmt_write_sample(kRmtCh[ch], data, len, false);
+}
+
+static void hwWait(uint8_t ch) { rmt_wait_tx_done(kRmtCh[ch], pdMS_TO_TICKS(100)); }
+
+static void hwRelease(uint8_t ch) {
+  // The channel stays configured; whoever takes the pin re-routes the GPIO
+  // matrix. We just stop transmitting (see show()).
+  rmt_wait_tx_done(kRmtCh[ch], pdMS_TO_TICKS(100));
+}
+
+static bool hwAttach(uint8_t ch) {
+  return rmt_set_gpio(kRmtCh[ch], RMT_MODE_TX, (gpio_num_t)s_pins[ch], false) == ESP_OK;
+}
+#endif
+
+// ---------------------------------------------------------------- common
+
+bool begin(const uint8_t* pins, uint8_t numChannels) {
+  if (numChannels > kMaxCh) numChannels = kMaxCh;
+  s_numCh = numChannels;
+  bool all = true;
+  for (uint8_t ch = 0; ch < s_numCh; ch++) {
+    s_pins[ch] = pins[ch];
+    s_count[ch] = 0;
+    memset(s_render[ch], 0, sizeof(s_render[ch]));
+    memset(s_out[ch], 0, sizeof(s_out[ch]));
+    s_ok[ch] = hwInit(ch);
+    s_attached[ch] = s_ok[ch];
+    if (!s_ok[ch]) all = false;
+  }
+  return all;
+}
+
+void setCount(uint8_t ch, uint16_t count) {
+  if (ch >= s_numCh) return;
+  if (count > MAX_LEDS_PER_CHANNEL) count = MAX_LEDS_PER_CHANNEL;
+  if (count > s_count[ch]) memset(s_render[ch] + s_count[ch] * 3, 0, (count - s_count[ch]) * 3);
+  s_count[ch] = count;
+}
+
+uint16_t count(uint8_t ch) { return ch < s_numCh ? s_count[ch] : 0; }
+uint8_t* buffer(uint8_t ch) { return ch < s_numCh ? s_render[ch] : NULL; }
+bool     attached(uint8_t ch) { return ch < s_numCh && s_attached[ch]; }
+bool     ok(uint8_t ch) { return ch < s_numCh && s_ok[ch]; }
+
+void show(uint8_t brightness, const uint8_t* colorOrders) {
+  uint16_t scale = (uint16_t)brightness + 1;
+  for (uint8_t ch = 0; ch < s_numCh; ch++) {
+    if (!s_ok[ch] || !s_attached[ch] || s_count[ch] == 0) continue;
+    uint8_t ord = colorOrders[ch] < ORDER_COUNT ? colorOrders[ch] : (uint8_t)ORDER_RGB;
+    const uint8_t* m = kOrderMap[ord];
+    const uint8_t* src = s_render[ch];
+    uint8_t* dst = s_out[ch];
+    for (uint16_t i = 0; i < s_count[ch]; i++, src += 3, dst += 3) {
+      dst[m[0]] = (uint8_t)((src[0] * scale) >> 8);
+      dst[m[1]] = (uint8_t)((src[1] * scale) >> 8);
+      dst[m[2]] = (uint8_t)((src[2] * scale) >> 8);
+    }
+  }
+  // Start every channel, then wait for all of them: they run in parallel.
+  for (uint8_t ch = 0; ch < s_numCh; ch++)
+    if (s_ok[ch] && s_attached[ch] && s_count[ch]) hwStart(ch, s_out[ch], s_count[ch] * 3);
+  for (uint8_t ch = 0; ch < s_numCh; ch++)
+    if (s_ok[ch] && s_attached[ch] && s_count[ch]) hwWait(ch);
+}
+
+void releasePin(uint8_t ch) {
+  if (ch >= s_numCh || !s_ok[ch] || !s_attached[ch]) return;
+  hwRelease(ch);
+  s_attached[ch] = false;
+}
+
+bool attachPin(uint8_t ch) {
+  if (ch >= s_numCh || !s_ok[ch]) return false;
+  if (s_attached[ch]) return true;
+  s_attached[ch] = hwAttach(ch);
+  return s_attached[ch];
+}
+
+}  // namespace Leds
