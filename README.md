@@ -30,7 +30,7 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 ## Build and flash
 
 **PlatformIO (VS Code)**
-1. Open the `steamboat` folder.
+1. Open the `led-steamboat` folder.
 2. Optionally set first-boot defaults in `include/config.h`: `WIFI_SSID` / `WIFI_PASSWORD`, `AP_SSID` / `AP_PASSWORD`, `ADMIN_PASSWORD`. You can also leave them and set everything from the web page later.
 3. Plug the board in with USB-C and run **Upload** for the `usb` environment (`pio run -e usb -t upload`).
 4. For later updates, see [Firmware updates](#firmware-updates).
