@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smoke and Paddle Wheel Effects</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* Companion to waterline-simulator.html: same night panels, type and controls.
+   Two panels side by side (smoke, paddle wheel), each with its scene, a level-over-time
+   chart and its own sliders; shared play/brightness above; how-it-works below. */
+:root{color-scheme:light dark;--bg:light-dark(#f4f7fb,#03070f);--ink:light-dark(#0b1424,#e6eefb);--mute:light-dark(#4d5b70,#93a3bb);--line:light-dark(#d5dde8,#18233a);--night:#050c1a;--cap:#ffb060;--card:light-dark(#ffffff,#081122)}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Instrument Sans",system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1240px;margin:0 auto;padding:clamp(24px,4vw,56px) max(5vw,16px)}
+h1{font:800 clamp(34px,5vw,52px)/1.05 "Big Shoulders Display",Impact,sans-serif;margin:0 0 8px;text-wrap:balance}
+.lede{color:var(--mute);margin:0 0 20px;max-width:72ch}
+.top{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:center;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(16px,2.5vw,28px)}
+.panel{background:var(--night);border-radius:14px;padding:clamp(14px,2.2vw,24px);color:#cfe0f7;box-shadow:0 18px 50px -24px #1a0d00}
+.panel h2{font:700 26px/1.1 "Big Shoulders Display",Impact,sans-serif;margin:0 0 6px;color:#f3e6d6}
+.panel .sub{font-size:13px;color:#8fa6c6;margin:0 0 8px}
+.scene{position:relative;aspect-ratio:4/3}
+.chart{position:relative;height:150px;margin-top:10px}
+.scene canvas,.chart canvas{position:absolute;inset:0;width:100%;height:100%}
+.key{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:#8fa6c6;margin-top:6px}
+.key i{display:inline-block;width:18px;height:3px;vertical-align:middle;margin-right:6px;border-radius:2px}
+.ctl{display:flex;flex-wrap:wrap;gap:4px 24px;align-items:center;margin-top:12px}
+label{display:flex;align-items:center;gap:10px;font-size:15px}
+output{font-variant-numeric:tabular-nums;min-width:3.4em;color:var(--mute)}
+.panel output{color:#8fa6c6}
+input[type=range]{width:min(170px,40vw);height:44px;accent-color:#e08a2f}
+input[type=checkbox]{width:22px;height:22px;accent-color:#e08a2f}
+button{font:600 15px "Instrument Sans",sans-serif;min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--cap);outline-offset:2px}
+.how{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(20px,4vw,48px);margin-top:36px}
+.how h2{font:700 24px/1.1 "Big Shoulders Display",Impact,sans-serif;margin:0 0 8px}
+.how p{margin:0 0 12px;max-width:62ch}
+table{border-collapse:collapse;width:100%;font-size:15px;margin:4px 0 8px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+code{font-size:.92em}
+.note{font-size:13px;color:var(--mute);margin-top:24px;max-width:90ch}
+@media(max-width:860px){.grid,.how{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){table{font-size:13px}th,td{padding:7px 6px}}
+</style>
+</head><body>
+<div class="wrap">
+  <h1>Smoke puffs and paddle wheel</h1>
+  <p class="lede">A live run of the firmware's two timed effects on the default sections: three 14-LED smoke puffs (<code>3:60-101</code>) and three 20-LED spoke sets (<code>4:118-177</code>). It uses the same timing and level maths as <code>smokeLevel()</code> and <code>spokeLevel()</code> in <code>display.cpp</code>.</p>
+
+  <div class="top">
+    <button id="play" type="button">Pause</button>
+    <label>Brightness <input id="bri" type="range" min="0" max="255" value="160"><output id="briv">160</output></label>
+  </div>
+
+  <div class="grid">
+    <section class="panel" aria-label="Smoke">
+      <h2>Smoke</h2>
+      <p class="sub">Stack (static) with puffs 1 → 3 drifting away from it</p>
+      <div class="scene"><canvas id="smokeScene" aria-label="Smokestack and three smoke puffs"></canvas></div>
+      <div class="chart"><canvas id="smokeChart" aria-label="Puff brightness over one burst"></canvas></div>
+      <div class="key"><span><i style="background:#ff7aa8"></i>puff 1</span><span><i style="background:#ffd166"></i>puff 2</span><span><i style="background:#8be9a3"></i>puff 3</span><span>one burst, seconds at 100% speed</span></div>
+      <div class="ctl">
+        <label>Speed <input id="smSpd" type="range" min="0" max="400" value="100"><output id="smSpdv">100%</output></label>
+        <label>Thinning <input id="fade" type="range" min="0" max="255" value="70"><output id="fadev">70</output></label>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Paddle wheel">
+      <h2>Paddle wheel</h2>
+      <p class="sub">Rim and hub (static) with spoke sets A, B, C</p>
+      <div class="scene"><canvas id="wheelScene" aria-label="Paddle wheel with three spoke sets"></canvas></div>
+      <div class="chart"><canvas id="wheelChart" aria-label="Spoke set brightness over one turn"></canvas></div>
+      <div class="key"><span><i style="background:#ff7aa8"></i>spokes A</span><span><i style="background:#ffd166"></i>spokes B</span><span><i style="background:#8be9a3"></i>spokes C</span><span>one turn, seconds at 100% speed</span></div>
+      <div class="ctl">
+        <label>Speed <input id="whSpd" type="range" min="0" max="400" value="100"><output id="whSpdv">100%</output></label>
+        <label>Unlit level <input id="floor" type="range" min="0" max="255" value="20"><output id="floorv">20</output></label>
+        <label><input id="rev" type="checkbox"> Reversed (<code>wheeldir</code>)</label>
+      </div>
+    </section>
+  </div>
+
+  <div class="how">
+    <div>
+      <h2>How the smoke works</h2>
+      <p>A burst is three puffs, starting with the one nearest the stack. Each puff starts 0.7 s after the one before. It fades in, holds, then fades out more slowly, and overlaps the next. After the last puff goes out there's a short dark gap, then the burst repeats.</p>
+      <p>Each farther puff is dimmer. <em>Thinning</em> (<code>fade</code>, 0–255) sets how much dimmer: at 70, each puff loses 27% of full brightness (1.0, 0.73, 0.45), and no puff goes below 10%. The fades follow an S-curve and are squared, which roughly matches how the eye sees LED light, so they look even.</p>
+      <table>
+        <thead><tr><th>Step (at 100%)</th><th class="n">Time</th></tr></thead>
+        <tbody>
+          <tr><td>Delay between puffs</td><td class="n">700 ms</td></tr>
+          <tr><td>Fade in · hold · fade out</td><td class="n">350 · 350 · 900 ms</td></tr>
+          <tr><td>Dark gap after the last puff</td><td class="n">500 ms</td></tr>
+          <tr><td>Whole burst</td><td class="n">3.5 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h2>How the wheel works</h2>
+      <p>One spoke set is lit at a time, and the others stay at the <em>unlit level</em> (<code>floor</code>, default 20 of 255) so the spokes never vanish. Every 0.35 s the light moves on to the next set, A → B → C → A, so the wheel seems to turn.</p>
+      <p>For the first half of each step the lit set holds steady. For the second half it crossfades into the next one. <code>wheeldir</code> swaps the order to C → B → A without rewiring. Speed scales the clock, so changing it never makes the wheel jump.</p>
+      <table>
+        <thead><tr><th>Step (at 100%)</th><th class="n">Time</th></tr></thead>
+        <tbody>
+          <tr><td>Light moves one spoke set</td><td class="n">350 ms</td></tr>
+          <tr><td>Hold · crossfade</td><td class="n">175 · 175 ms</td></tr>
+          <tr><td>One full turn (3 sets)</td><td class="n">1.05 s</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <p class="note">The stack and wheel shapes are a sketch. The real strings can be routed any way, and only the group numbers decide the order. The LED counts, colours (smoke <code>FFB060</code>, spokes <code>FF0030</code>, stack and rim <code>FFA040</code>), timing and level maths come from <code>config.h</code> and <code>display.cpp</code>. The screen version is gamma-corrected to look like LED light; real strings are far brighter. Companion page: <a href="waterline-simulator.html">waterline simulator</a>.</p>
+</div>
+<script>
+{
+// ---- firmware constants (config.h) ----
+const STAGGER = 700, RISE = 350, HOLD = 350, FALL = 900, PAUSE = 500;
+const STEP_MS = 350, WHEEL_FADE = 0.5;
+const GROUPS = 3;
+const rgb = h => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
+const WARM_WHITE = rgb(0xFFA040), SMOKE = rgb(0xFFB060), SPOKE = rgb(0xFF0030), BAND = rgb(0x00A0FF);
+const SERIES = ['#ff7aa8', '#ffd166', '#8be9a3'];
+
+const $ = id => document.getElementById(id);
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const ease = x => (x = clamp01(x), x * x * (3 - 2 * x));
+const lvl = x => Math.floor(clamp01(x) * 255 + 0.5);
+
+// settings (firmware defaults)
+let bright = 160, smokeSpeed = 100, wheelSpeed = 100, smokeFade = 70, spokeFloor = 20, wheelRev = false;
+// animation clocks, advanced like advanceClocks()
+let smokeMs = 0, wheelSteps = 0, last = 0, playing = true;
+
+const CYCLE = (GROUPS - 1) * STAGGER + RISE + HOLD + FALL + PAUSE;
+function smokeLevel(group, ms) {
+  const t = (ms % CYCLE) - group * STAGGER;
+  let e;
+  if (t < 0) e = 0;
+  else if (t < RISE) e = ease(t / RISE);
+  else if (t < RISE + HOLD) e = 1;
+  else if (t < RISE + HOLD + FALL) e = 1 - ease((t - RISE - HOLD) / FALL);
+  else e = 0;
+  const fade = Math.max(0.1, 1 - group * (smokeFade / 255));
+  return e * e * fade;
+}
+function spokeLevel(group, steps) {
+  const pos = steps % GROUPS, cur = Math.floor(pos), f = pos - cur;
+  const fadeStart = 1 - WHEEL_FADE;
+  const x = (f < fadeStart || WHEEL_FADE <= 0) ? 0 : ease((f - fadeStart) / WHEEL_FADE);
+  const g = wheelRev ? GROUPS - 1 - group : group;
+  let level = 0;
+  if (g === cur) level = 1 - x;
+  else if (g === (cur + 1) % GROUPS) level = x;
+  const fl = spokeFloor / 255;
+  return fl + (1 - fl) * level;
+}
+
+// setPx() section level, then Leds::show() master brightness: (v*(n+1))>>8
+const shade = (c, level) => c.map(v => (((v * (level + 1)) >> 8) * (bright + 1)) >> 8);
+// LED light is linear in the PWM value; encode to sRGB so the screen shows similar light
+const toScreen = v => Math.round(255 * (v / 255) ** (1 / 2.2));
+
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reduce) { playing = false; $('play').textContent = 'Play'; smokeMs = 1250; wheelSteps = 0.8; }
+
+function fit(cv) {
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * d) || cv.height !== Math.round(r.height * d)) {
+    cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
+  }
+  const g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0);
+  return [g, r.width, r.height];
+}
+
+// n points evenly spaced along a line, LED-centred
+const along = (x1, y1, x2, y2, n) => Array.from({ length: n }, (_, i) => {
+  const t = (i + 0.5) / n; return [x1 + (x2 - x1) * t, y1 + (y2 - y1) * t];
+});
+const ring = (cx, cy, r, n, a0 = 0, bump = 0) => Array.from({ length: n }, (_, i) => {
+  const a = a0 + i / n * Math.PI * 2, rr = r * (1 + bump * Math.sin(a * 5));
+  return [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr];
+});
+
+// Two passes so glows add up ('lighter') and LED cores sit on top.
+function drawLeds(g, groups, rad) {
+  g.globalCompositeOperation = 'lighter';
+  for (const [pts, c] of groups) {
+    const s = c.map(toScreen); if (s[0] + s[1] + s[2] === 0) continue;
+    for (const [x, y] of pts) {
+      const gl = g.createRadialGradient(x, y, 0, x, y, rad * 5);
+      gl.addColorStop(0, `rgba(${s},.42)`); gl.addColorStop(1, `rgba(${s},0)`);
+      g.fillStyle = gl; g.beginPath(); g.arc(x, y, rad * 5, 0, 7); g.fill();
+    }
+  }
+  g.globalCompositeOperation = 'source-over';
+  for (const [pts, c] of groups) {
+    const s = c.map(toScreen), dark = s[0] + s[1] + s[2] === 0;
+    for (const [x, y] of pts) {
+      g.fillStyle = dark ? '#151e2e' : `rgb(${s})`;
+      g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
+      if (!dark) { g.fillStyle = 'rgba(255,255,255,.28)'; g.beginPath(); g.arc(x - rad * .3, y - rad * .3, rad * .35, 0, 7); g.fill(); }
+    }
+  }
+}
+
+function label(g, text, x, y, color) {
+  g.font = '600 13px "Instrument Sans",system-ui,sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = color; g.fillText(text, x, y);
+}
+
+function drawSmokeScene() {
+  const [g, W, H] = fit($('smokeScene'));
+  g.clearRect(0, 0, W, H);
+  const cx = W * 0.2, hw = W * 0.05, base = H * 0.97, bandY = H * 0.6, crownY = H * 0.47, gap = H * 0.025;
+  const rad = Math.max(1.8, H * 0.0105);
+  // stack silhouette
+  g.fillStyle = '#0c1424';
+  g.beginPath(); g.moveTo(cx - hw, base); g.lineTo(cx - hw, bandY); g.lineTo(cx - hw * 1.7, crownY);
+  g.lineTo(cx + hw * 1.7, crownY); g.lineTo(cx + hw, bandY); g.lineTo(cx + hw, base); g.closePath(); g.fill();
+
+  const puffs = [
+    [cx + W * 0.13, crownY - H * 0.12, H * 0.075],
+    [cx + W * 0.32, crownY - H * 0.23, H * 0.09],
+    [cx + W * 0.55, crownY - H * 0.31, H * 0.105],
+  ];
+  const groups = [
+    // Smokestack 3:0-29 (15 up each side), band 3:30-39, top 3:40-59 (flared crown)
+    [[...along(cx - hw, base, cx - hw, bandY + gap, 15), ...along(cx + hw, base, cx + hw, bandY + gap, 15)], shade(WARM_WHITE, 255)],
+    [along(cx - hw * 1.2, bandY, cx + hw * 1.2, bandY, 10), shade(BAND, 255)],
+    [[...along(cx - hw * 1.05, bandY - gap, cx - hw * 1.7, crownY, 10), ...along(cx + hw * 1.05, bandY - gap, cx + hw * 1.7, crownY, 10)], shade(WARM_WHITE, 255)],
+  ];
+  puffs.forEach(([x, y, r], k) => groups.push([ring(x, y, r, 14, -Math.PI / 2, 0.08), shade(SMOKE, lvl(smokeLevel(k, smokeMs)))]));
+  drawLeds(g, groups, rad);
+  puffs.forEach(([x, y], k) => label(g, String(k + 1), x, y, SERIES[k]));
+}
+
+function drawWheelScene() {
+  const [g, W, H] = fit($('wheelScene'));
+  g.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.4;
+  const rad = Math.max(1.8, H * 0.0105);
+  const setAngles = k => [-Math.PI / 2 + k * Math.PI / 3, Math.PI / 2 + k * Math.PI / 3];
+  // wheel frame
+  g.strokeStyle = '#0f1a2c'; g.lineWidth = Math.max(3, R * 0.05); g.lineCap = 'round';
+  g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
+  for (let k = 0; k < GROUPS; k++) for (const a of setAngles(k)) {
+    g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke();
+  }
+  const groups = [
+    [ring(cx, cy, R, 80), shade(WARM_WHITE, 255)],          // Wheel rim 4:38-117
+    [ring(cx, cy, R * 0.1, 8), shade(WARM_WHITE, 255)],     // Wheel hub 4:30-37
+  ];
+  for (let k = 0; k < GROUPS; k++) {                          // Spokes A/B/C: 2 spokes x 10 LEDs
+    const pts = [];
+    for (const a of setAngles(k)) pts.push(...along(cx + Math.cos(a) * R * 0.18, cy + Math.sin(a) * R * 0.18, cx + Math.cos(a) * R * 0.92, cy + Math.sin(a) * R * 0.92, 10));
+    groups.push([pts, shade(SPOKE, lvl(spokeLevel(k, wheelSteps)))]);
+  }
+  drawLeds(g, groups, rad);
+  for (let k = 0; k < GROUPS; k++) for (const a of setAngles(k))
+    label(g, 'ABC'[k], cx + Math.cos(a) * R * 1.12, cy + Math.sin(a) * R * 1.12, SERIES[k]);
+}
+
+// Level (0-255, before master brightness) of each group over one cycle, with a playhead.
+function drawChart(id, levelAt, playhead, ticks) {
+  const [g, W, H] = fit($(id));
+  g.clearRect(0, 0, W, H);
+  const L = 30, R = W - 16, top = 8, bot = H - 22;
+  const X = u => L + (R - L) * u, Y = v => bot - (bot - top) * v / 255;
+  g.font = '12px "Instrument Sans",system-ui,sans-serif'; g.fillStyle = '#8fa6c6';
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  g.fillText('255', L - 6, Y(255)); g.fillText('0', L - 6, Y(0));
+  g.strokeStyle = 'rgba(160,190,230,.16)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(R, Y(0)); g.moveTo(L, Y(255)); g.lineTo(R, Y(255)); g.stroke();
+  g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const [u, txt] of ticks) {
+    g.beginPath(); g.moveTo(X(u), Y(0)); g.lineTo(X(u), Y(0) + 4); g.stroke();
+    g.fillText(txt, X(u), Y(0) + 6);
+  }
+  const N = 360;
+  for (let k = 0; k < GROUPS; k++) {
+    g.strokeStyle = SERIES[k]; g.lineWidth = 2; g.beginPath();
+    for (let s = 0; s <= N; s++) { const u = s / N, y = Y(levelAt(k, u)); s ? g.lineTo(X(u), y) : g.moveTo(X(u), y); }
+    g.stroke();
+  }
+  g.strokeStyle = 'rgba(255,255,255,.7)'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(X(playhead), top - 4); g.lineTo(X(playhead), bot); g.stroke();
+  for (let k = 0; k < GROUPS; k++) {
+    g.fillStyle = SERIES[k]; g.strokeStyle = '#050c1a'; g.lineWidth = 1.5;
+    g.beginPath(); g.arc(X(playhead), Y(levelAt(k, playhead)), 4.5, 0, 7); g.fill(); g.stroke();
+  }
+}
+
+const smokeTicks = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5].map(s => [s * 1000 / CYCLE, String(s)]);
+const wheelTicks = [0, 1, 2, 3].map(i => [i / GROUPS, String(i * STEP_MS / 1000)]);
+
+function frame(now) {
+  let dt = last ? now - last : 0; last = now;
+  if (dt > 200) dt = 200;                       // same cap as advanceClocks()
+  if (playing) {
+    smokeMs += dt * smokeSpeed / 100;
+    wheelSteps += dt / STEP_MS * wheelSpeed / 100;
+  }
+  drawSmokeScene(); drawWheelScene();
+  drawChart('smokeChart', (k, u) => lvl(smokeLevel(k, u * CYCLE)), (smokeMs % CYCLE) / CYCLE, smokeTicks);
+  drawChart('wheelChart', (k, u) => lvl(spokeLevel(k, u * GROUPS)), (wheelSteps % GROUPS) / GROUPS, wheelTicks);
+  requestAnimationFrame(frame);
+}
+
+const bind = (id, fmt, set) => $(id).addEventListener('input', e => { const v = +e.target.value; set(v); $(id + 'v').textContent = fmt(v); });
+$('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; });
+bind('bri', v => v, v => bright = v);
+bind('smSpd', v => v + '%', v => smokeSpeed = v);
+bind('whSpd', v => v + '%', v => wheelSpeed = v);
+bind('fade', v => v, v => smokeFade = v);
+bind('floor', v => v, v => spokeFloor = v);
+$('rev').addEventListener('change', e => { wheelRev = e.target.checked; });
+requestAnimationFrame(frame);
+}
+</script>
+</body></html>
