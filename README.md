@@ -26,6 +26,8 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 | `src/console.cpp` | Serial console commands (the web page uses the same commands), backup |
 | `src/web.cpp` | Web page, restore, firmware upload |
 | `src/led_driver.*` | 4-channel WS2811 output on the ESP32 RMT peripheral (no external libraries) |
+| `scripts/version.py` | Build step: sets the firmware version from the git tag |
+| `scripts/factory.py` | Build step: writes `factory.bin`, the full flash image |
 
 ## Build and flash
 
@@ -35,7 +37,28 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 3. Plug the board in with USB-C and run **Upload** for the `usb` environment (`pio run -e usb -t upload`).
 4. For later updates, see [Firmware updates](#firmware-updates).
 
-**Arduino IDE (alternative):** create a folder `steamboat` containing an empty `steamboat.ino`. Copy every file from `src/` and `include/` into that folder, select board "ESP32 Dev Module", and upload. This build was compiled and checked against Arduino-ESP32 **core 2.0.17**, which is what PlatformIO uses. The driver also has an ESP-IDF 5 code path for core 3.x, but that path hasn't been compiled here.
+**Arduino IDE (alternative):** create a folder `steamboat` containing an empty `steamboat.ino`. Copy every file from `src/` and `include/` into that folder, select board "ESP32 Dev Module", and upload. This build was compiled and checked against Arduino-ESP32 **core 2.0.17**, which is what PlatformIO uses. The driver also has an ESP-IDF 5 code path for core 3.x, but that path hasn't been compiled here. Arduino IDE builds report their version as `dev`.
+
+**Prebuilt firmware:** each [GitHub release](https://github.com/thedayowl/led-steamboat/releases) has two files:
+- `led-steamboat-<version>-factory.bin`: the full image (bootloader, partition table and app) for a new board or one running WLED. Flash it at offset 0x0, for example `esptool.py --chip esp32 write_flash 0x0 led-steamboat-1.2.0-factory.bin` or with the [ESP web flasher](https://espressif.github.io/esptool-js/).
+- `led-steamboat-<version>-ota.bin`: the app only, for boards already running this firmware. See [Firmware updates](#firmware-updates).
+
+## Versions and releases
+
+The firmware version comes from git when PlatformIO builds it. It shows on the serial console at startup, in `info`, on the web page and in backup files.
+
+| Build from | Version |
+|---|---|
+| The commit tagged `v1.2.0` | `1.2.0` |
+| 3 commits after that tag | `1.2.0-3-gabc1234` (`abc1234` is the commit) |
+| Any build with uncommitted changes | ends in `-dirty` |
+
+So a board running a clean release shows a plain number, and anything else tells you exactly which commit it came from.
+
+To make a release:
+1. Commit your changes, then tag the commit: `git tag v1.3.0` and `git push origin v1.3.0`.
+2. Build with `pio run -e usb`. That writes `.pio/build/usb/firmware.bin` (the OTA image) and `.pio/build/usb/factory.bin` (the full image).
+3. On GitHub, create a release for the tag and attach both files, renamed `led-steamboat-1.3.0-ota.bin` and `led-steamboat-1.3.0-factory.bin`.
 
 ## Wiring
 
@@ -132,7 +155,7 @@ You can read and edit it.
 
 Settings are kept across updates. They're stored separately from the firmware.
 
-- **From the web page:** **Firmware update** > choose the `.bin` > **Upload firmware**. A progress bar shows the upload, then the board restarts and the page reconnects. With PlatformIO, the file is `.pio/build/usb/firmware.bin` after a build. In Arduino IDE, use Sketch > Export Compiled Binary. A file that isn't an ESP32 firmware image is rejected without touching the running firmware.
+- **From the web page:** **Firmware update** > choose the `.bin` > **Upload firmware**. A progress bar shows the upload, then the board restarts and the page reconnects. Use the `-ota.bin` file from a release, or after a PlatformIO build use `.pio/build/usb/firmware.bin`. Don't upload `factory.bin` here. In Arduino IDE, use Sketch > Export Compiled Binary. A file that isn't an ESP32 firmware image is rejected without touching the running firmware.
 - **From PlatformIO over Wi-Fi:** `pio run -e ota -t upload`. The `--auth=` value in `platformio.ini` must match the admin password.
 
 If a new firmware version adds, removes or renames rows in the section table, it starts with the compiled defaults for sections. Download a backup before updating and restore it afterwards.

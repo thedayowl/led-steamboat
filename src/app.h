@@ -3,7 +3,12 @@
 #include <Arduino.h>
 #include "config.h"
 
-#define FW_VERSION "1.2.0"
+// Set at build time from the git tag by scripts/version.py (e.g. "1.2.0" or
+// "1.2.0-3-gabc1234-dirty"). This fallback is only used without PlatformIO/git,
+// e.g. Arduino IDE builds.
+#ifndef FW_VERSION
+#define FW_VERSION "dev"
+#endif
 
 #define NUM_SECTIONS ((int)(sizeof(DEFAULT_SECTIONS) / sizeof(DEFAULT_SECTIONS[0])))
 
