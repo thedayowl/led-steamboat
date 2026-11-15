@@ -30,9 +30,16 @@ label{display:flex;align-items:center;gap:10px;font-size:15px}
 output{font-variant-numeric:tabular-nums;min-width:3.4em;color:var(--mute)}
 .panel output{color:#8fa6c6}
 input[type=range]{width:min(170px,40vw);height:44px;accent-color:#e08a2f}
+select{font:15px "Instrument Sans",sans-serif;min-height:44px;padding:0 10px;border-radius:10px;border:1px solid #24324d;background:#0b1528;color:#cfe0f7}
+.exp{margin-top:14px;padding-top:12px;border-top:1px solid #18233a}
+.exp h3{font:700 19px/1.1 "Big Shoulders Display",Impact,sans-serif;margin:0;color:#f3e6d6}
+.exp .ctl{margin-top:4px}
+.panel button{background:#0b1528;color:#cfe0f7;border-color:#24324d}
+.cfg{font-size:13px;color:#8fa6c6;margin:8px 0 0}
+.cfg code{color:#f3e6d6;display:block;white-space:pre-wrap;margin-top:2px}
 input[type=checkbox]{width:22px;height:22px;accent-color:#e08a2f}
 button{font:600 15px "Instrument Sans",sans-serif;min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
-button:focus-visible,input:focus-visible{outline:3px solid var(--cap);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--cap);outline-offset:2px}
 .how{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(20px,4vw,48px);margin-top:36px}
 .how h2{font:700 24px/1.1 "Big Shoulders Display",Impact,sans-serif;margin:0 0 8px}
 .how p{margin:0 0 12px;max-width:62ch}
@@ -78,6 +85,16 @@ code{font-size:.92em}
         <label>Unlit level <input id="floor" type="range" min="0" max="255" value="20"><output id="floorv">20</output></label>
         <label><input id="rev" type="checkbox"> Reversed (<code>wheeldir</code>)</label>
       </div>
+      <div class="exp">
+        <h3>Try smoother settings</h3>
+        <div class="ctl">
+          <label>Step time <input id="step" type="range" min="100" max="1000" step="10" value="350"><output id="stepv">350 ms</output></label>
+          <label>Crossfade <input id="xf" type="range" min="0" max="100" value="50"><output id="xfv">50%</output></label>
+          <label>Fade curve <select id="curve"><option value="s">S-curve (firmware)</option><option value="lin">Linear</option></select></label>
+          <button id="wheelReset" type="button">Firmware defaults</button>
+        </div>
+        <p class="cfg">config.h: <code id="cfg"></code></p>
+      </div>
     </section>
   </div>
 
@@ -100,8 +117,9 @@ code{font-size:.92em}
       <h2>How the wheel works</h2>
       <p>One spoke set is lit at a time, and the others stay at the <em>unlit level</em> (<code>floor</code>, default 20 of 255) so the spokes never vanish. Every 0.35 s the light moves on to the next set, A → B → C → A. Each set is every third spoke, so each step moves the lit spokes one spoke along (20°) and the wheel seems to turn, counter-clockwise in this drawing.</p>
       <p>For the first half of each step the lit set holds steady. For the second half it crossfades into the next one. <code>wheeldir</code> swaps the order to C → B → A without rewiring. Speed scales the clock, so changing it never makes the wheel jump.</p>
+      <p><em>Try smoother settings</em> changes the two timing constants and the fade shape. Step time and crossfade are <code>WHEEL_STEP_MS</code> and <code>WHEEL_FADE</code> in config.h; the readout shows the lines to copy. With 100% crossfade and the linear curve the light slides steadily from set to set without stopping. The S-curve slows down at the start and end of every fade, so the light lingers on each set. A shorter step time makes each 20° jump harder to see.</p>
       <table>
-        <thead><tr><th>Step (at 100%)</th><th class="n">Time</th></tr></thead>
+        <thead><tr><th>Firmware default (at 100%)</th><th class="n">Time</th></tr></thead>
         <tbody>
           <tr><td>Light moves one spoke set</td><td class="n">350 ms</td></tr>
           <tr><td>Hold · crossfade</td><td class="n">175 · 175 ms</td></tr>
@@ -117,7 +135,7 @@ code{font-size:.92em}
 {
 // ---- firmware constants (config.h) ----
 const STAGGER = 700, RISE = 350, HOLD = 350, FALL = 900, PAUSE = 500;
-const STEP_MS = 350, WHEEL_FADE = 0.5;
+const STEP_MS = 350, WHEEL_FADE = 0.5;   // firmware defaults; the experiment sliders start here
 const GROUPS = 3;
 const SPOKES = 18, LEDS_PER_SPOKE = 7;   // drawing only; the firmware just sees three LED groups
 const rgb = h => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
@@ -133,6 +151,9 @@ const lvl = x => Math.floor(clamp01(x) * 255 + 0.5);
 let bright = 160, smokeSpeed = 100, wheelSpeed = 100, smokeFade = 70, spokeFloor = 20, wheelRev = false;
 // animation clocks, advanced like advanceClocks()
 let smokeMs = 0, wheelSteps = 0, last = 0, playing = true;
+// wheel experiments (not in the firmware's runtime settings: step and crossfade are config.h constants)
+let stepMs = STEP_MS, wheelFade = WHEEL_FADE, curve = 's';
+const curveFn = x => curve === 'lin' ? clamp01(x) : ease(x);
 
 const CYCLE = (GROUPS - 1) * STAGGER + RISE + HOLD + FALL + PAUSE;
 function smokeLevel(group, ms) {
@@ -148,8 +169,8 @@ function smokeLevel(group, ms) {
 }
 function spokeLevel(group, steps) {
   const pos = steps % GROUPS, cur = Math.floor(pos), f = pos - cur;
-  const fadeStart = 1 - WHEEL_FADE;
-  const x = (f < fadeStart || WHEEL_FADE <= 0) ? 0 : ease((f - fadeStart) / WHEEL_FADE);
+  const fadeStart = 1 - wheelFade;
+  const x = (f < fadeStart || wheelFade <= 0) ? 0 : curveFn((f - fadeStart) / wheelFade);
   const g = wheelRev ? GROUPS - 1 - group : group;
   let level = 0;
   if (g === cur) level = 1 - x;
@@ -296,18 +317,18 @@ function drawChart(id, levelAt, playhead, ticks) {
 }
 
 const smokeTicks = [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5].map(s => [s * 1000 / CYCLE, String(s)]);
-const wheelTicks = [0, 1, 2, 3].map(i => [i / GROUPS, String(i * STEP_MS / 1000)]);
+const wheelTicks = () => [0, 1, 2, 3].map(i => [i / GROUPS, String(Math.round(i * stepMs) / 1000)]);
 
 function frame(now) {
   let dt = last ? now - last : 0; last = now;
   if (dt > 200) dt = 200;                       // same cap as advanceClocks()
   if (playing) {
     smokeMs += dt * smokeSpeed / 100;
-    wheelSteps += dt / STEP_MS * wheelSpeed / 100;
+    wheelSteps += dt / stepMs * wheelSpeed / 100;
   }
   drawSmokeScene(); drawWheelScene();
   drawChart('smokeChart', (k, u) => lvl(smokeLevel(k, u * CYCLE)), (smokeMs % CYCLE) / CYCLE, smokeTicks);
-  drawChart('wheelChart', (k, u) => lvl(spokeLevel(k, u * GROUPS)), (wheelSteps % GROUPS) / GROUPS, wheelTicks);
+  drawChart('wheelChart', (k, u) => lvl(spokeLevel(k, u * GROUPS)), (wheelSteps % GROUPS) / GROUPS, wheelTicks());
   requestAnimationFrame(frame);
 }
 
@@ -319,6 +340,22 @@ bind('whSpd', v => v + '%', v => wheelSpeed = v);
 bind('fade', v => v, v => smokeFade = v);
 bind('floor', v => v, v => spokeFloor = v);
 $('rev').addEventListener('change', e => { wheelRev = e.target.checked; });
+
+function showCfg() {
+  const fade = wheelFade.toFixed(2).replace(/0+$/, '').replace(/\.$/, '.0');
+  $('cfg').textContent = `#define WHEEL_STEP_MS ${stepMs}\n#define WHEEL_FADE    ${fade}f` +
+    (curve === 'lin' ? '\n// linear curve: needs a small code change in spokeLevel()' : '');
+}
+bind('step', v => v + ' ms', v => { stepMs = v; showCfg(); });   // clock counts steps, so no jump
+bind('xf', v => v + '%', v => { wheelFade = v / 100; showCfg(); });
+$('curve').addEventListener('change', e => { curve = e.target.value; showCfg(); });
+$('wheelReset').addEventListener('click', () => {
+  stepMs = STEP_MS; wheelFade = WHEEL_FADE; curve = 's';
+  $('step').value = STEP_MS; $('stepv').textContent = STEP_MS + ' ms';
+  $('xf').value = WHEEL_FADE * 100; $('xfv').textContent = WHEEL_FADE * 100 + '%';
+  $('curve').value = 's'; showCfg();
+});
+showCfg();
 requestAnimationFrame(frame);
 }
 </script>
