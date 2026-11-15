@@ -23,10 +23,10 @@ def merge_factory(source, target, env):
     cmd = [
         env.subst("$PYTHONEXE"), env.subst("$OBJCOPY"),
         "--chip", board.get("build.mcu", "esp32"),
-        "merge_bin", "-o", out,
-        "--flash_mode", board.get("build.flash_mode", "dio"),
-        "--flash_freq", "%dm" % (int(board.get("build.f_flash", "40000000L").rstrip("L")) // 1000000),
-        "--flash_size", board.get("upload.flash_size", "4MB"),
+        "merge-bin", "-o", out,   # esptool v5 spelling (core 3 platform)
+        "--flash-mode", board.get("build.flash_mode", "dio"),
+        "--flash-freq", "%dm" % (int(board.get("build.f_flash", "40000000L").rstrip("L")) // 1000000),
+        "--flash-size", board.get("upload.flash_size", "4MB"),
     ] + images
 
     print("Building factory image " + out)
