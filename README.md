@@ -55,10 +55,16 @@ The firmware version comes from git when PlatformIO builds it. It shows on the s
 
 So a board running a clean release shows a plain number, and anything else tells you exactly which commit it came from.
 
-To make a release:
-1. Commit your changes, then tag the commit: `git tag v1.3.0` and `git push origin v1.3.0`.
-2. Build with `pio run -e usb`. That writes `.pio/build/usb/firmware.bin` (the OTA image) and `.pio/build/usb/factory.bin` (the full image).
-3. On GitHub, create a release for the tag and attach both files, renamed `led-steamboat-1.3.0-ota.bin` and `led-steamboat-1.3.0-factory.bin`.
+To make a release, commit and push your changes, then tag the commit and push the tag:
+
+```
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+GitHub Actions ([.github/workflows/build.yml](.github/workflows/build.yml)) then builds the firmware and creates the release with both `.bin` files attached. It also builds every push to `main` and every pull request. The two files from those builds are under **Artifacts** on each run in the Actions tab.
+
+A local `pio run -e usb` produces the same two files: `.pio/build/usb/firmware.bin` (the OTA image) and `.pio/build/usb/factory.bin` (the full image).
 
 ## Wiring
 
