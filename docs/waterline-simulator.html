@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Waterline Effect</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&family=Instrument+Sans:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a quiet technical explainer, the kind printed on the inside of a model kit lid.
+   IDEA: the river at night: one dark panel where the waterline LEDs glow exactly as the firmware lights them.
+   PICTURE: the 70-LED strip, glowing, with the wave that drives it drawn underneath against its colour ramp.
+   COLOUR and TYPE: night river #050c1a, the four firmware blues, lightest cap #70c8ff as accent; Big Shoulders Display + Instrument Sans.
+   LAYOUT: title, then the panel full width, controls in one row under it, how-it-works in two columns, stacking below 600px. */
+:root{color-scheme:light dark;--bg:light-dark(#f4f7fb,#03070f);--ink:light-dark(#0b1424,#e6eefb);--mute:light-dark(#4d5b70,#93a3bb);--line:light-dark(#d5dde8,#18233a);--night:#050c1a;--cap:#70c8ff;--card:light-dark(#ffffff,#081122)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Instrument Sans",system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1240px;margin:0 auto;padding:clamp(24px,4vw,56px) max(5vw,16px)}
+h1{font:800 clamp(34px,5vw,52px)/1.05 "Big Shoulders Display",Impact,sans-serif;margin:0 0 8px;text-wrap:balance}
+.lede{color:var(--mute);margin:0 0 24px;max-width:68ch}
+.panel{background:var(--night);border-radius:14px;padding:clamp(14px,2.5vw,28px);color:#cfe0f7;box-shadow:0 18px 50px -24px #001a4d}
+.strip{position:relative;height:clamp(64px,9vw,96px)}
+.wave{position:relative;height:clamp(170px,22vw,240px);margin-top:10px}
+.strip canvas,.wave canvas{position:absolute;inset:0;width:100%;height:100%}
+.ends{display:flex;justify-content:space-between;font-size:13px;color:#8fa6c6;margin-top:2px}
+.flow{color:var(--cap)}
+.ctl{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:center;margin-top:18px}
+.ctl label{display:flex;align-items:center;gap:10px;font-size:15px}
+.ctl output{font-variant-numeric:tabular-nums;min-width:4.2em;color:var(--mute)}
+input[type=range]{width:min(220px,48vw);height:44px;accent-color:#2f7fe0}
+input[type=checkbox]{width:22px;height:22px;accent-color:#2f7fe0}
+button{font:600 15px "Instrument Sans",sans-serif;min-height:44px;padding:0 18px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+button:focus-visible,input:focus-visible{outline:3px solid var(--cap);outline-offset:2px}
+.key{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:13px;color:#8fa6c6;margin-top:8px}
+.key i{display:inline-block;width:18px;height:2px;vertical-align:middle;margin-right:6px}
+.how{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(20px,4vw,48px);margin-top:36px}
+.how h2{font:700 24px/1.1 "Big Shoulders Display",Impact,sans-serif;margin:0 0 8px}
+.how p{margin:0 0 12px;max-width:62ch}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+code{font-size:.92em}
+.note{font-size:13px;color:var(--mute);margin-top:14px}
+@media(max-width:600px){.how{grid-template-columns:minmax(0,1fr)}table{font-size:13px}th,td{padding:7px 6px}}
+</style>
+</head><body>
+<div class="wrap">
+  <h1>Waterline: shifting blues that flow along the hull</h1>
+  <p class="lede">A live run of the firmware's waterline effect on the default section <code>1:90-159</code>: 70 LEDs, speed 100%, brightness 160. Same formula and colours as <code>drawWater()</code> in <code>display.cpp</code>.</p>
+
+  <div class="panel">
+    <div class="strip"><canvas id="strip" aria-label="70 waterline LEDs"></canvas></div>
+    <div class="ends"><span id="endA">LED 90 (first)</span><span class="flow" id="dir">water flows →</span><span id="endB">LED 159 (last)</span></div>
+    <div class="wave"><canvas id="wave" aria-label="Wave value at each LED"></canvas></div>
+    <div class="key"><span><i style="background:#fff"></i>sum of the three waves → colour</span><span><i style="background:#ff7aa8"></i>wave 1</span><span><i style="background:#ffd166"></i>wave 2</span><span><i style="background:#8be9a3"></i>wave 3</span></div>
+  </div>
+
+  <div class="ctl">
+    <button id="play" type="button">Pause</button>
+    <label>Speed <input id="spd" type="range" min="0" max="400" value="100"><output id="spdv">100%</output></label>
+    <label>Brightness <input id="bri" type="range" min="0" max="255" value="160"><output id="briv">160</output></label>
+    <label><input id="rev" type="checkbox"> Reversed (<code>rev</code>)</label>
+  </div>
+
+  <div class="how">
+    <div>
+      <h2>How it works</h2>
+      <p>Each LED gets a number from three sine waves added together. Each wave has its own length and speed, so the pattern never repeats exactly. Crests turn pale, troughs go deep navy.</p>
+      <p>The sum (−2.1 to +2.1) is mapped through four blues, darkest to lightest. It's biased toward the dark end (raised to the power 1.4), so pale caps are rarer, like light catching the odd wave.</p>
+      <p>Position comes from the order the runs are listed, not the LED numbers. So the water still flows smoothly when a section is wired in pieces or backwards. <code>rev</code> flips the direction; the speed setting scales the clock.</p>
+    </div>
+    <div>
+      <table>
+        <thead><tr><th>Wave</th><th class="n">Strength</th><th class="n">Length</th><th class="n">Drift</th></tr></thead>
+        <tbody>
+          <tr><td>1 · main swell</td><td class="n">1.0</td><td class="n">11.4 LEDs</td><td class="n">4.0 LEDs/s</td></tr>
+          <tr><td>2 · long roll</td><td class="n">0.7</td><td class="n">27.3 LEDs</td><td class="n">5.7 LEDs/s</td></tr>
+          <tr><td>3 · ripple</td><td class="n">0.4</td><td class="n">5.6 LEDs</td><td class="n">2.7 LEDs/s</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Drift is at speed 100%. Colours: <code>000A40 → 0030D0 → 0080FF → 70C8FF</code> (<code>WATER_COLORS</code> in config.h). The screen version is gamma-corrected to look like light from an LED; real strings are far brighter.</p>
+    </div>
+  </div>
+</div>
+<script>
+{
+const N = 70, FIRST = 90;
+const WC = [[0x00,0x0A,0x40],[0x00,0x30,0xD0],[0x00,0x80,0xFF],[0x70,0xC8,0xFF]];
+const $ = id => document.getElementById(id);
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+
+// firmware lerpColor: integer channels, truncation toward zero
+const lerp = (a, b, t) => a.map((v, k) => v + Math.trunc((b[k] - v) * clamp01(t)));
+function waterColor(u) {
+  u = clamp01(u) ** 1.4;
+  const x = u * 3, i = Math.floor(x);
+  return i >= 3 ? WC[3] : lerp(WC[i], WC[i + 1], x - i);
+}
+// LED light is linear in the PWM value; encode to sRGB so the screen shows similar light
+const toScreen = v => Math.round(255 * (v / 255) ** (1 / 2.2));
+
+let T = 0, last = 0, playing = true, speed = 100, bright = 160, rev = false;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reduce) { playing = false; $('play').textContent = 'Play'; T = 4.2; }
+
+function waves(x) {
+  const tp = 2 * Math.PI;
+  const p1 = (T * 2.2) % tp, p2 = (T * 1.3) % tp, p3 = (T * 3.1) % tp;
+  const a = Math.sin(x * 0.55 - p1), b = 0.7 * Math.sin(x * 0.23 - p2 + 1.7), c = 0.4 * Math.sin(x * 1.13 - p3 + 4.0);
+  return [a, b, c, a + b + c];
+}
+function ledColor(idx) {
+  const x = rev ? N - 1 - idx : idx;
+  const c = waterColor((waves(x)[3] + 2.1) / 4.2);
+  const s = bright + 1;                       // Leds::show() master brightness
+  return c.map(v => (v * s) >> 8);
+}
+
+function fit(cv) {
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1;
+  if (cv.width !== Math.round(r.width * d) || cv.height !== Math.round(r.height * d)) {
+    cv.width = Math.round(r.width * d); cv.height = Math.round(r.height * d);
+  }
+  const g = cv.getContext('2d'); g.setTransform(d, 0, 0, d, 0, 0);
+  return [g, r.width, r.height];
+}
+
+function drawStrip() {
+  const [g, W, H] = fit($('strip'));
+  g.clearRect(0, 0, W, H);
+  const step = W / N, rad = Math.max(1.6, Math.min(step * 0.34, H * 0.2)), y = H / 2;
+  g.fillStyle = '#0b1830'; g.fillRect(0, y - rad * 1.6, W, rad * 3.2);   // the strip itself
+  for (let i = 0; i < N; i++) {
+    const c = ledColor(i).map(toScreen), col = `rgb(${c})`, x = step * (i + 0.5);
+    const glow = g.createRadialGradient(x, y, 0, x, y, rad * 4.2);
+    glow.addColorStop(0, `rgba(${c},.55)`); glow.addColorStop(1, `rgba(${c},0)`);
+    g.fillStyle = glow; g.beginPath(); g.arc(x, y, rad * 4.2, 0, 7); g.fill();
+    g.fillStyle = col; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.25)'; g.beginPath(); g.arc(x - rad * .3, y - rad * .3, rad * .35, 0, 7); g.fill();
+  }
+}
+
+function drawWave() {
+  const [g, W, H] = fit($('wave'));
+  g.clearRect(0, 0, W, H);
+  const bar = 12, L = bar + 10, R = W - 4, top = 8, bot = H - 8;
+  const X = i => L + (R - L) * (i + 0.5) / N;
+  const Y = w => bot - (bot - top) * (w + 2.1) / 4.2;
+  // colour ramp as the y axis: value at this height -> colour
+  for (let py = top; py < bot; py++) {
+    const w = 2.1 - 4.2 * (py - top) / (bot - top);
+    g.fillStyle = `rgb(${waterColor((w + 2.1) / 4.2).map(toScreen)})`; g.fillRect(0, py, bar, 1.5);
+  }
+  g.strokeStyle = 'rgba(160,190,230,.18)'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(R, Y(0)); g.stroke();
+  // the three component waves, faint, sampled finely
+  const cols = ['#ff7aa8', '#ffd166', '#8be9a3'];
+  const xAt = i => rev ? N - 1 - i : i;
+  for (let k = 0; k < 3; k++) {
+    g.strokeStyle = cols[k]; g.globalAlpha = 0.45; g.lineWidth = 1.3; g.beginPath();
+    for (let s = 0; s <= (N - 1) * 6; s++) { const i = s / 6, py = Y(waves(xAt(i))[k]); s ? g.lineTo(X(i), py) : g.moveTo(X(i), py); }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  // the sum, and a dot per LED in its actual colour
+  g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 2; g.beginPath();
+  for (let s = 0; s <= (N - 1) * 6; s++) { const i = s / 6, py = Y(waves(xAt(i))[3]); s ? g.lineTo(X(i), py) : g.moveTo(X(i), py); }
+  g.stroke();
+  const r = Math.max(1.8, Math.min(4, (R - L) / N * 0.32));
+  for (let i = 0; i < N; i++) {
+    g.fillStyle = `rgb(${ledColor(i).map(toScreen)})`; g.strokeStyle = '#050c1a'; g.lineWidth = 1;
+    g.beginPath(); g.arc(X(i), Y(waves(xAt(i))[3]), r, 0, 7); g.fill(); g.stroke();
+  }
+}
+
+function frame(now) {
+  let dt = last ? now - last : 0; last = now;
+  if (dt > 200) dt = 200;                     // same cap as advanceClocks()
+  if (playing) T += dt / 1000 * speed / 100;
+  drawStrip(); drawWave();
+  requestAnimationFrame(frame);
+}
+
+$('play').addEventListener('click', () => { playing = !playing; $('play').textContent = playing ? 'Pause' : 'Play'; });
+$('spd').addEventListener('input', e => { speed = +e.target.value; $('spdv').textContent = speed + '%'; });
+$('bri').addEventListener('input', e => { bright = +e.target.value; $('briv').textContent = bright; });
+$('rev').addEventListener('change', e => {
+  rev = e.target.checked;
+  $('dir').textContent = rev ? '← water flows' : 'water flows →';
+});
+requestAnimationFrame(frame);
+}
+</script>
+</body></html>
