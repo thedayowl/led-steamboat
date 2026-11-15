@@ -47,7 +47,7 @@ code{font-size:.92em}
 </head><body>
 <div class="wrap">
   <h1>Smoke puffs and paddle wheel</h1>
-  <p class="lede">A live run of the firmware's two timed effects on the default sections: three 14-LED smoke puffs (<code>3:60-101</code>) and three 20-LED spoke sets (<code>4:118-177</code>). It uses the same timing and level maths as <code>smokeLevel()</code> and <code>spokeLevel()</code> in <code>display.cpp</code>.</p>
+  <p class="lede">A live run of the firmware's two timed effects on the default sections: three 14-LED smoke puffs (<code>3:60-101</code>) and an 18-spoke paddle wheel wired as three spoke sets. It uses the same timing and level maths as <code>smokeLevel()</code> and <code>spokeLevel()</code> in <code>display.cpp</code>.</p>
 
   <div class="top">
     <button id="play" type="button">Pause</button>
@@ -69,10 +69,10 @@ code{font-size:.92em}
 
     <section class="panel" aria-label="Paddle wheel">
       <h2>Paddle wheel</h2>
-      <p class="sub">Rim and hub (static) with spoke sets A, B, C</p>
-      <div class="scene"><canvas id="wheelScene" aria-label="Paddle wheel with three spoke sets"></canvas></div>
-      <div class="chart"><canvas id="wheelChart" aria-label="Spoke set brightness over one turn"></canvas></div>
-      <div class="key"><span><i style="background:#ff7aa8"></i>spokes A</span><span><i style="background:#ffd166"></i>spokes B</span><span><i style="background:#8be9a3"></i>spokes C</span><span>one turn, seconds at 100% speed</span></div>
+      <p class="sub">Rim and hub (static) with 18 spokes: every third spoke is in the same set (A, B, C)</p>
+      <div class="scene"><canvas id="wheelScene" aria-label="Paddle wheel with 18 spokes in three sets"></canvas></div>
+      <div class="chart"><canvas id="wheelChart" aria-label="Spoke set brightness over one A to C cycle"></canvas></div>
+      <div class="key"><span><i style="background:#ff7aa8"></i>spokes A</span><span><i style="background:#ffd166"></i>spokes B</span><span><i style="background:#8be9a3"></i>spokes C</span><span>one A → B → C cycle, seconds at 100% speed</span></div>
       <div class="ctl">
         <label>Speed <input id="whSpd" type="range" min="0" max="400" value="100"><output id="whSpdv">100%</output></label>
         <label>Unlit level <input id="floor" type="range" min="0" max="255" value="20"><output id="floorv">20</output></label>
@@ -98,19 +98,20 @@ code{font-size:.92em}
     </div>
     <div>
       <h2>How the wheel works</h2>
-      <p>One spoke set is lit at a time, and the others stay at the <em>unlit level</em> (<code>floor</code>, default 20 of 255) so the spokes never vanish. Every 0.35 s the light moves on to the next set, A → B → C → A, so the wheel seems to turn.</p>
+      <p>One spoke set is lit at a time, and the others stay at the <em>unlit level</em> (<code>floor</code>, default 20 of 255) so the spokes never vanish. Every 0.35 s the light moves on to the next set, A → B → C → A. Each set is every third spoke, so each step moves the lit spokes one spoke along (20°) and the wheel seems to turn.</p>
       <p>For the first half of each step the lit set holds steady. For the second half it crossfades into the next one. <code>wheeldir</code> swaps the order to C → B → A without rewiring. Speed scales the clock, so changing it never makes the wheel jump.</p>
       <table>
         <thead><tr><th>Step (at 100%)</th><th class="n">Time</th></tr></thead>
         <tbody>
           <tr><td>Light moves one spoke set</td><td class="n">350 ms</td></tr>
           <tr><td>Hold · crossfade</td><td class="n">175 · 175 ms</td></tr>
-          <tr><td>One full turn (3 sets)</td><td class="n">1.05 s</td></tr>
+          <tr><td>A → B → C and back to A (60°)</td><td class="n">1.05 s</td></tr>
+          <tr><td>Light goes all the way round (18 spokes)</td><td class="n">6.3 s</td></tr>
         </tbody>
       </table>
     </div>
   </div>
-  <p class="note">The stack and wheel shapes are a sketch. The real strings can be routed any way, and only the group numbers decide the order. The LED counts, colours (smoke <code>FFB060</code>, spokes <code>FF0030</code>, stack and rim <code>FFA040</code>), timing and level maths come from <code>config.h</code> and <code>display.cpp</code>. The screen version is gamma-corrected to look like LED light; real strings are far brighter. Companion page: <a href="waterline-simulator.html">waterline simulator</a>.</p>
+  <p class="note">The stack and wheel shapes are a sketch. The real strings can be routed any way, and only the group numbers decide the order. The wheel is drawn with 18 spokes of 7 LEDs, every third spoke in the same set (42 LEDs per set; the default table's 20 per set are placeholders to replace when you map the real strings). The other LED counts, colours (smoke <code>FFB060</code>, spokes <code>FF0030</code>, stack and rim <code>FFA040</code>), timing and level maths come from <code>config.h</code> and <code>display.cpp</code>. The screen version is gamma-corrected to look like LED light; real strings are far brighter. Companion page: <a href="waterline-simulator.html">waterline simulator</a>.</p>
 </div>
 <script>
 {
@@ -118,6 +119,7 @@ code{font-size:.92em}
 const STAGGER = 700, RISE = 350, HOLD = 350, FALL = 900, PAUSE = 500;
 const STEP_MS = 350, WHEEL_FADE = 0.5;
 const GROUPS = 3;
+const SPOKES = 18, LEDS_PER_SPOKE = 7;   // drawing only; the firmware just sees three LED groups
 const rgb = h => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
 const WARM_WHITE = rgb(0xFFA040), SMOKE = rgb(0xFFB060), SPOKE = rgb(0xFF0030), BAND = rgb(0x00A0FF);
 const SERIES = ['#ff7aa8', '#ffd166', '#8be9a3'];
@@ -240,9 +242,10 @@ function drawWheelScene() {
   g.clearRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.4;
   const rad = Math.max(1.8, H * 0.0105);
-  const setAngles = k => [-Math.PI / 2 + k * Math.PI / 3, Math.PI / 2 + k * Math.PI / 3];
+  // 18 spokes, every third one in the same set: A B C A B C ... around the wheel
+  const setAngles = k => Array.from({ length: SPOKES / GROUPS }, (_, i) => -Math.PI / 2 + (i * GROUPS + k) * 2 * Math.PI / SPOKES);
   // wheel frame
-  g.strokeStyle = '#0f1a2c'; g.lineWidth = Math.max(3, R * 0.05); g.lineCap = 'round';
+  g.strokeStyle = '#0f1a2c'; g.lineWidth = Math.max(2, R * 0.025); g.lineCap = 'round';
   g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
   for (let k = 0; k < GROUPS; k++) for (const a of setAngles(k)) {
     g.beginPath(); g.moveTo(cx, cy); g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); g.stroke();
@@ -251,9 +254,9 @@ function drawWheelScene() {
     [ring(cx, cy, R, 80), shade(WARM_WHITE, 255)],          // Wheel rim 4:38-117
     [ring(cx, cy, R * 0.1, 8), shade(WARM_WHITE, 255)],     // Wheel hub 4:30-37
   ];
-  for (let k = 0; k < GROUPS; k++) {                          // Spokes A/B/C: 2 spokes x 10 LEDs
+  for (let k = 0; k < GROUPS; k++) {                          // Spokes A/B/C: 6 spokes each
     const pts = [];
-    for (const a of setAngles(k)) pts.push(...along(cx + Math.cos(a) * R * 0.18, cy + Math.sin(a) * R * 0.18, cx + Math.cos(a) * R * 0.92, cy + Math.sin(a) * R * 0.92, 10));
+    for (const a of setAngles(k)) pts.push(...along(cx + Math.cos(a) * R * 0.24, cy + Math.sin(a) * R * 0.24, cx + Math.cos(a) * R * 0.93, cy + Math.sin(a) * R * 0.93, LEDS_PER_SPOKE));
     groups.push([pts, shade(SPOKE, lvl(spokeLevel(k, wheelSteps)))]);
   }
   drawLeds(g, groups, rad);
