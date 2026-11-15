@@ -30,14 +30,14 @@ Units are inches. Each panel file also has its straightened photo as a faded, lo
 
 The zigzag crown itself stays `smokestack-top`.
 
+Puffs 1 and 2 now use their photo lengths (49" and 97", marked `est`). The lengths written on the sketch, 85" and 190", were far longer than the wire and put the bulbs much too close together.
+
 ## Please check
 
 **Your labeled length differs a lot from what the photo shows.** The label is used for the LED count either way.
 
 | Segment | Label | Photo |
 |---|---|---|
-| Cloud above the stack crown (smoke puff 1) | 85" | ~47" |
-| Middle cloud (smoke puff 2) | 190" | ~94" |
 | Panel 2 part of the seam cloud (smoke puff 3) | 35" | ~42" |
 | Upper deck columns (Panels 1 and 2) | 10" | ~12.3" |
 | Top spoke (spoke04) | 18" | ~13" |
@@ -59,6 +59,6 @@ The zigzag crown itself stays `smokestack-top`.
 | Spacing | 3" | 3.5" | 4" |
 |---|---|---|---|
 | Panel 1 | 207 | 175 | 160 |
-| Panel 2 | 430 | 365 | 327 |
-| Panel 3 | 335 | 290 | 255 |
-| **All** | **972** | **830** | **742** |
+| Panel 2 | 389 | 331 | 296 |
+| Panel 3 | 338 | 291 | 256 |
+| **All** | **934** | **797** | **712** |

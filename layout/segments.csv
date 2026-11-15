@@ -60,31 +60,32 @@ panel,channel,seq,section,length_in,photo_length_in,flag,leds@3in,leds@3.5in,led
 2,2,22,lower-deck-windows,11,10.9,,4,3,3,,2.22 lower-deck-windows 11in
 2,2,23,lower-deck-roof,72,72.2,,24,21,18,,2.23 lower-deck-roof 72in
 2,2,24,lower-deck-roof,7,6.0,,2,2,2,,2.24 lower-deck-roof 7in
-2,2,25,lower-deck-roof,84,83.7,,28,24,21,,2.25 lower-deck-roof 84in
-2,2,26,upper-deck-columns,10,12.8,?,3,3,2,measures ~12.3 in the photo,2.26 upper-deck-columns 10in ?
+2,2,25,lower-deck-roof,7,6.2,est,2,2,2,above the rightmost column; length assumed same as the left one,2.25 lower-deck-roof 7in est
+2,2,26,lower-deck-roof,84,83.7,,28,24,21,,2.26 lower-deck-roof 84in
 2,2,27,upper-deck-columns,10,12.8,?,3,3,2,measures ~12.3 in the photo,2.27 upper-deck-columns 10in ?
 2,2,28,upper-deck-columns,10,12.8,?,3,3,2,measures ~12.3 in the photo,2.28 upper-deck-columns 10in ?
 2,2,29,upper-deck-columns,10,12.8,?,3,3,2,measures ~12.3 in the photo,2.29 upper-deck-columns 10in ?
 2,2,30,upper-deck-columns,10,12.8,?,3,3,2,measures ~12.3 in the photo,2.30 upper-deck-columns 10in ?
 2,2,31,upper-deck-columns,10,12.8,?,3,3,2,measures ~12.3 in the photo,2.31 upper-deck-columns 10in ?
-2,2,32,roof,84,83.7,,28,24,21,,2.32 roof 84in
-2,2,33,roof,8,7.8,,3,2,2,,2.33 roof 8in
-2,2,34,roof,84,83.7,,28,24,21,,2.34 roof 84in
-2,2,35,roof-dome,5,5.1,,2,1,1,,2.35 roof-dome 5in
-2,2,36,roof-dome,22,19.4,,7,6,6,,2.36 roof-dome 22in
-2,2,37,roof-dome,5,5.1,,2,1,1,,2.37 roof-dome 5in
-2,2,38,roof-cabin,4,4.1,,1,1,1,,2.38 roof-cabin 4in
-2,2,39,roof-cabin,12,12.9,,4,3,3,,2.39 roof-cabin 12in
-2,2,40,roof-cabin,4,4.1,,1,1,1,,2.40 roof-cabin 4in
-2,2,41,smokestack,36,34.8,,12,10,9,,2.41 smokestack 36in
-2,2,42,smokestack,36,35.5,,12,10,9,,2.42 smokestack 36in
-2,2,43,smokestack-band,14,15.0,,5,4,4,,2.43 smokestack-band 14in
+2,2,32,upper-deck-columns,10,12.8,?,3,3,2,measures ~12.3 in the photo,2.32 upper-deck-columns 10in ?
+2,2,33,roof,84,83.7,,28,24,21,,2.33 roof 84in
+2,2,34,roof,8,7.8,,3,2,2,,2.34 roof 8in
+2,2,35,roof,84,83.7,,28,24,21,,2.35 roof 84in
+2,2,36,roof-dome,5,5.1,,2,1,1,,2.36 roof-dome 5in
+2,2,37,roof-dome,22,19.4,,7,6,6,,2.37 roof-dome 22in
+2,2,38,roof-dome,5,5.1,,2,1,1,,2.38 roof-dome 5in
+2,2,39,roof-cabin,4,4.1,,1,1,1,,2.39 roof-cabin 4in
+2,2,40,roof-cabin,12,12.9,,4,3,3,,2.40 roof-cabin 12in
+2,2,41,roof-cabin,4,4.1,,1,1,1,,2.41 roof-cabin 4in
+2,2,42,smokestack,36,34.8,,12,10,9,,2.42 smokestack 36in
+2,2,43,smokestack,36,35.5,,12,10,9,,2.43 smokestack 36in
 2,2,44,smokestack-band,14,15.0,,5,4,4,,2.44 smokestack-band 14in
-2,2,45,smokestack-top,41,40.1,,14,12,10,,2.45 smokestack-top 41in
-2,2,46,smoke-puff-1,85,49.1,?,28,24,21,cloud right above the stack crown; wire measures ~47 in the photo,2.46 smoke-puff-1 85in ?
-2,2,47,smoke-puff-2,190,97.1,?,63,54,48,wire measures ~94 in the photo,2.47 smoke-puff-2 190in ?
-2,2,48,smoke-puff-3,35,43.6,?,12,10,9,Panel 2 part of the cloud that spans the seam; wire measures ~42 in the photo,2.48 smoke-puff-3 35in ?
-2,2,49,life-ring,8,6.5,,3,2,2,"small slice of the ring, over the Panel 2 right tube",2.49 life-ring 8in
+2,2,45,smokestack-band,14,15.0,,5,4,4,,2.45 smokestack-band 14in
+2,2,46,smokestack-top,41,40.1,,14,12,10,,2.46 smokestack-top 41in
+2,2,47,smoke-puff-1,49,49.1,est,16,14,12,cloud right above the stack crown; length from the photo (sketch label was 85in),2.47 smoke-puff-1 49in est
+2,2,48,smoke-puff-2,97,97.1,est,32,28,24,length from the photo (sketch label was 190in),2.48 smoke-puff-2 97in est
+2,2,49,smoke-puff-3,35,43.6,?,12,10,9,Panel 2 part of the cloud that spans the seam; wire measures ~42 in the photo,2.49 smoke-puff-3 35in ?
+2,2,50,life-ring,8,6.5,,3,2,2,"small slice of the ring, over the Panel 2 right tube",2.50 life-ring 8in
 3,3,1,flagpole,30,29.0,,10,9,8,,3.01 flagpole 30in
 3,3,2,flag,14,13.3,,5,4,4,,3.02 flag 14in
 3,3,3,flag,10,10.4,,3,3,2,,3.03 flag 10in
@@ -93,8 +94,8 @@ panel,channel,seq,section,length_in,photo_length_in,flag,leds@3in,leds@3.5in,led
 3,3,6,roof,8,7.9,,3,2,2,,3.06 roof 8in
 3,3,7,roof,23,20.3,,8,7,6,,3.07 roof 23in
 3,3,8,smoke-puff-3,20,19.3,,7,6,5,Panel 3 part of the cloud that spans the seam,3.08 smoke-puff-3 20in
-3,3,9,rear-structures,7,13.0,,2,2,2,,3.09 rear-structures 7in
-3,3,10,rear-structures,10,7.5,,3,3,2,,3.10 rear-structures 10in
+3,3,9,upper-deck-columns,10,13.0,?,3,3,2,labelled like the Panel 2 upper deck columns; measures ~13 in the photo,3.09 upper-deck-columns 10in ?
+3,3,10,lower-deck-roof,10,7.5,,3,3,2,,3.10 lower-deck-roof 10in
 3,3,11,rear-structures,11,11.0,,4,3,3,,3.11 rear-structures 11in
 3,3,12,life-ring,18,14.2,,6,5,4,"Panel 3 part of the ring, ends at the Panel 3 left tube",3.12 life-ring 18in
 3,3,13,rear-structures,6,6.4,,2,2,2,,3.13 rear-structures 6in
