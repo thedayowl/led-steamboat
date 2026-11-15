@@ -5,7 +5,7 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 **What it does**
 - Every part of the boat is a **section**. A section is a list of **runs** of LEDs. Runs can be anywhere on any of the 4 strings, in any order, and forwards or backwards.
 - Static sections show a solid color.
-- **Waterline**: shifting shades of blue that flow along the section in the order its runs are listed, regardless of how the string is routed. To see it without hardware, open [docs/waterline-simulator.html](docs/waterline-simulator.html) in a browser. It runs the firmware's formula live.
+- **Waterline**: shifting shades of blue that flow along the section in the order its runs are listed, regardless of how the string is routed. To see it without hardware, open the [waterline simulator](https://thedayowl.github.io/led-steamboat/waterline-simulator.html) ([source](docs/waterline-simulator.html)). It runs the firmware's formula live.
 - **Smoke**: three puffs fade in one after another moving away from the stack, each fainter than the last, then a pause.
 - **Paddle wheel**: three spoke sets light in rotation with a crossfade, so the wheel looks like it's turning.
 - **Test tools** on the serial console and the web page, for finding LEDs and mapping sections without recompiling.
