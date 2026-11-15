@@ -98,7 +98,7 @@ code{font-size:.92em}
     </div>
     <div>
       <h2>How the wheel works</h2>
-      <p>One spoke set is lit at a time, and the others stay at the <em>unlit level</em> (<code>floor</code>, default 20 of 255) so the spokes never vanish. Every 0.35 s the light moves on to the next set, A → B → C → A. Each set is every third spoke, so each step moves the lit spokes one spoke along (20°) and the wheel seems to turn.</p>
+      <p>One spoke set is lit at a time, and the others stay at the <em>unlit level</em> (<code>floor</code>, default 20 of 255) so the spokes never vanish. Every 0.35 s the light moves on to the next set, A → B → C → A. Each set is every third spoke, so each step moves the lit spokes one spoke along (20°) and the wheel seems to turn, counter-clockwise in this drawing.</p>
       <p>For the first half of each step the lit set holds steady. For the second half it crossfades into the next one. <code>wheeldir</code> swaps the order to C → B → A without rewiring. Speed scales the clock, so changing it never makes the wheel jump.</p>
       <table>
         <thead><tr><th>Step (at 100%)</th><th class="n">Time</th></tr></thead>
@@ -242,8 +242,9 @@ function drawWheelScene() {
   g.clearRect(0, 0, W, H);
   const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.4;
   const rad = Math.max(1.8, H * 0.0105);
-  // 18 spokes, every third one in the same set: A B C A B C ... around the wheel
-  const setAngles = k => Array.from({ length: SPOKES / GROUPS }, (_, i) => -Math.PI / 2 + (i * GROUPS + k) * 2 * Math.PI / SPOKES);
+  // 18 spokes, every third one in the same set: A B C A B C ... going counter-clockwise,
+  // so the light (A -> B -> C) turns the wheel counter-clockwise
+  const setAngles = k => Array.from({ length: SPOKES / GROUPS }, (_, i) => -Math.PI / 2 - (i * GROUPS + k) * 2 * Math.PI / SPOKES);
   // wheel frame
   g.strokeStyle = '#0f1a2c'; g.lineWidth = Math.max(2, R * 0.025); g.lineCap = 'round';
   g.beginPath(); g.arc(cx, cy, R, 0, 7); g.stroke();
