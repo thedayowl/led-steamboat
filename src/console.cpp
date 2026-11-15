@@ -842,13 +842,21 @@ void consolePoll() {
   }
 }
 
+// True once `ms` have passed since `since`. `now` is read at the top of loop(),
+// but commands run after that stamp times with a fresh millis(), so `since` can
+// be slightly later than `now`. The signed difference treats that as "no time
+// passed" where plain unsigned math would wrap to ~49 days and fire at once.
+static bool elapsed(uint32_t now, uint32_t since, uint32_t ms) {
+  return (int32_t)(now - since) >= (int32_t)ms;
+}
+
 void consoleTick(uint32_t now) {
-  if (g_test.mode == TEST_WALK && g_chan[g_test.ch].count && now - g_test.lastStep >= g_test.walkMs) {
+  if (g_test.mode == TEST_WALK && g_chan[g_test.ch].count && elapsed(now, g_test.lastStep, g_test.walkMs)) {
     g_test.lastStep = now;
     g_test.a = (g_test.a + 1 >= g_chan[g_test.ch].count) ? 0 : g_test.a + 1;
     if (s_active) { s_out.print("\r"); reportCursor(s_out); }
   }
-  if ((s_active || g_test.mode != TEST_OFF) && now - s_lastActivity > TEST_TIMEOUT_MS) {
+  if ((s_active || g_test.mode != TEST_OFF) && elapsed(now, s_lastActivity, TEST_TIMEOUT_MS)) {
     if (s_active) { s_out.print("\r\n[No input for a while.] "); deactivate(s_out); }
     else g_test.mode = TEST_OFF;
   }
