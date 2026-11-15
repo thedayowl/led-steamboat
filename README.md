@@ -37,7 +37,9 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 3. Plug the board in with USB-C and run **Upload** for the `usb` environment (`pio run -e usb -t upload`).
 4. For later updates, see [Firmware updates](#firmware-updates).
 
-**Arduino IDE (alternative):** create a folder `steamboat` containing an empty `steamboat.ino`. Copy every file from `src/` and `include/` into that folder, select board "ESP32 Dev Module", and upload. This build was compiled and checked against Arduino-ESP32 **core 2.0.17**, which is what PlatformIO uses. The driver also has an ESP-IDF 5 code path for core 3.x, but that path hasn't been compiled here. Arduino IDE builds report their version as `dev`.
+**Arduino IDE (alternative):** create a folder `steamboat` containing an empty `steamboat.ino`. Copy every file from `src/` and `include/` into that folder, select board "ESP32 Dev Module", and upload. Use Arduino-ESP32 **core 3.3.12**, the version PlatformIO builds with. Arduino IDE builds report their version as `dev`.
+
+**About the platform:** the firmware uses Arduino-ESP32 core 3.x, which is built on ESP-IDF 5. The official PlatformIO platform stops at core 2.0.17, so `platformio.ini` uses the community [pioarduino](https://github.com/pioarduino/platform-espressif32) platform. pioarduino installs its own fork of PlatformIO and its own toolchains, so `platformio.ini` gives it a separate folder (`~/.platformio-pioarduino`). Other projects in `~/.platformio` aren't affected. The first build downloads several hundred MB.
 
 **Prebuilt firmware:** each [GitHub release](https://github.com/thedayowl/led-steamboat/releases) has two files:
 - `led-steamboat-<version>-factory.bin`: the full image (bootloader, partition table and app) for a new board or one running WLED. Flash it at offset 0x0, for example `esptool.py --chip esp32 write_flash 0x0 led-steamboat-1.2.0-factory.bin` or with the [ESP web flasher](https://espressif.github.io/esptool-js/).
