@@ -1,0 +1,52 @@
+// ---- generated from the frame layout and string routing (route_files.py) ----
+// Channel 1 = panel 1 (bow), 2 = panel 2 (centre, controller), 3 = panel 3 (stern / wheel); channel 4 unused.
+// Bulb spacing 3.5 in. Runs are in each section's animation order (the waterline runs bow to stern).
+#define MAX_RUNS_PER_SECTION 16     // largest section here has 14 runs
+static const uint16_t   DEFAULT_CHANNEL_LEDS[NUM_CHANNELS]  = { 175, 331, 291, 0 };
+
+static const SectionDef DEFAULT_SECTIONS[] = {
+  // name                    role         grp  leds                                                    color
+  { "Flag",                  ROLE_STATIC, 0, "3:270-280",                                               0x00FF40 },
+  { "Flagpole",              ROLE_STATIC, 0, "3:265-269, 281-284",                                      0xFFA040 },
+  { "Hull",                  ROLE_STATIC, 0, "1:19-32, 40-45, 54-57, 66-67, 2:60-61, 70-77, 105-110, 119-120, 146-149, 158-159, 3:177-185", 0xFFA040 },
+  { "Life ring",             ROLE_STATIC, 0, "2:78-79, 3:170-174",                                      0xFFA040 },
+  { "Lower deck columns",    ROLE_STATIC, 0, "1:37-39, 68-72, 81-84, 167-170, 2:0-3, 53-59, 121-125, 127-130, 140-145, 160-164, 171-173", 0xFF0040 },
+  { "Lower deck roof",       ROLE_STATIC, 0, "1:73-80, 85-100, 171-174, 2:4-21, 48-52, 126, 131-139, 165-170, 174-183, 3:164-166", 0xFFA040 },
+  { "Lower deck windows",    ROLE_STATIC, 0, "1:33-36, 46-53, 58-65, 2:62-69, 111-118, 150-157",        0xFFA040 },
+  { "Rear structures",       ROLE_STATIC, 0, "3:152-155, 167-169, 175-176",                             0xFF5000 },
+  { "Roof",                  ROLE_STATIC, 0, "1:104-112, 118-120, 145-154, 158-163, 2:25-28, 32-36, 40-44, 187-192, 196-203, 258-269, 278-281, 287-292, 3:156-160, 254-264", 0x00A0FF },
+  { "Roof cabin",            ROLE_STATIC, 0, "2:282-286",                                               0xFF0040 },
+  { "Roof dome",             ROLE_STATIC, 0, "2:270-277",                                               0xFFA040 },
+  { "Smokestack",            ROLE_STATIC, 0, "2:204-210, 215, 220-222, 249-257",                        0xFFA040 },
+  { "Smokestack band",       ROLE_STATIC, 0, "2:211-214, 216-219",                                      0x00A0FF },
+  { "Smokestack top",        ROLE_STATIC, 0, "2:223-232, 247-248",                                      0xFFA040 },
+  { "Upper deck columns",    ROLE_STATIC, 0, "1:101-103, 155-157, 164-166, 2:22-24, 29-31, 37-39, 45-47, 184-186, 193-195, 3:161-163", 0x00FF40 },
+  { "Wheel axle",            ROLE_STATIC, 0, "3:219-223",                                               0xFFA040 },
+  { "Wheel hub",             ROLE_STATIC, 0, "3:11-12, 21-35",                                          0xFFA040 },
+  { "Wheel mount",           ROLE_STATIC, 0, "3:107-151",                                               0xFFA040 },
+  { "Wheel rim",             ROLE_STATIC, 0, "3:40-69, 71-73, 75-77, 79-81, 83-85, 87-89, 91-93, 95-97, 99-103, 105-106", 0xFFA040 },
+  { "Wheelhouse",            ROLE_STATIC, 0, "1:121-123, 131-136, 142-144",                             0xFF0040 },
+  { "Wheelhouse door",       ROLE_STATIC, 0, "1:113-117",                                               0xFFA040 },
+  { "Wheelhouse roof",       ROLE_STATIC, 0, "1:128-130, 137-141",                                      0x00A0FF },
+  { "Wheelhouse top",        ROLE_STATIC, 0, "1:124-127",                                               0xFFA040 },
+  { "Waterline",             ROLE_WATER,  0, "1:18-0, 2:104-80, 3:0-6, 186-197, 204-206",               0x0040FF },
+  { "Smoke puff 1",          ROLE_SMOKE,  0, "2:233-246",                                               0xFFB060 },
+  { "Smoke puff 2",          ROLE_SMOKE,  1, "2:303-330",                                               0xFFB060 },
+  { "Smoke puff 3",          ROLE_SMOKE,  2, "2:293-302, 3:285-290",                                    0xFFB060 },
+  { "Spoke 01",              ROLE_SPOKE,  0, "3:36-39, 104",                                            0xFF0030 },
+  { "Spoke 02",              ROLE_SPOKE,  2, "3:249-253",                                               0xFF0030 },
+  { "Spoke 03",              ROLE_SPOKE,  1, "3:98, 245-248",                                           0xFF0030 },
+  { "Spoke 04",              ROLE_SPOKE,  0, "3:94, 240-244",                                           0xFF0030 },
+  { "Spoke 05",              ROLE_SPOKE,  2, "3:90, 236-239",                                           0xFF0030 },
+  { "Spoke 06",              ROLE_SPOKE,  1, "3:86, 232-235",                                           0xFF0030 },
+  { "Spoke 07",              ROLE_SPOKE,  0, "3:82, 228-231",                                           0xFF0030 },
+  { "Spoke 08",              ROLE_SPOKE,  2, "3:78, 224-227",                                           0xFF0030 },
+  { "Spoke 09",              ROLE_SPOKE,  1, "3:74, 215-218",                                           0xFF0030 },
+  { "Spoke 10",              ROLE_SPOKE,  0, "3:70, 211-214",                                           0xFF0030 },
+  { "Spoke 11",              ROLE_SPOKE,  2, "3:207-210",                                               0xFF0030 },
+  { "Spoke 12",              ROLE_SPOKE,  1, "3:198-200",                                               0xFF0030 },
+  { "Spoke 13",              ROLE_SPOKE,  0, "3:201-203",                                               0xFF0030 },
+  { "Spoke 14",              ROLE_SPOKE,  2, "3:13-15",                                                 0xFF0030 },
+  { "Spoke 15",              ROLE_SPOKE,  1, "3:16-20",                                                 0xFF0030 },
+  { "Spoke 16",              ROLE_SPOKE,  0, "3:7-10",                                                  0xFF0030 },
+};

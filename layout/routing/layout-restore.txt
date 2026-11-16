@@ -1,0 +1,51 @@
+# Steamboat lights: LED layout from the string routing
+# Restore on the web page (Backup & restore) or paste into the serial console, then 'save'.
+# Needs firmware whose section table has these section names (see config_sections.h).
+
+chan 1 count 175
+chan 2 count 331
+chan 3 count 291
+chan 4 count 0
+set flag 3:270-280
+set flagpole 3:265-269, 281-284
+set hull 1:19-32, 40-45, 54-57, 66-67, 2:60-61, 70-77, 105-110, 119-120, 146-149, 158-159, 3:177-185
+set lifering 2:78-79, 3:170-174
+set lowerdeckcolumns 1:37-39, 68-72, 81-84, 167-170, 2:0-3, 53-59, 121-125, 127-130, 140-145, 160-164, 171-173
+set lowerdeckroof 1:73-80, 85-100, 171-174, 2:4-21, 48-52, 126, 131-139, 165-170, 174-183, 3:164-166
+set lowerdeckwindows 1:33-36, 46-53, 58-65, 2:62-69, 111-118, 150-157
+set rearstructures 3:152-155, 167-169, 175-176
+set roof 1:104-112, 118-120, 145-154, 158-163, 2:25-28, 32-36, 40-44, 187-192, 196-203, 258-269, 278-281, 287-292, 3:156-160, 254-264
+set roofcabin 2:282-286
+set roofdome 2:270-277
+set smokestack 2:204-210, 215, 220-222, 249-257
+set smokestackband 2:211-214, 216-219
+set smokestacktop 2:223-232, 247-248
+set upperdeckcolumns 1:101-103, 155-157, 164-166, 2:22-24, 29-31, 37-39, 45-47, 184-186, 193-195, 3:161-163
+set wheelaxle 3:219-223
+set wheelhub 3:11-12, 21-35
+set wheelmount 3:107-151
+set wheelrim 3:40-69, 71-73, 75-77, 79-81, 83-85, 87-89, 91-93, 95-97, 99-103, 105-106
+set wheelhouse 1:121-123, 131-136, 142-144
+set wheelhousedoor 1:113-117
+set wheelhouseroof 1:128-130, 137-141
+set wheelhousetop 1:124-127
+set waterline 1:18-0, 2:104-80, 3:0-6, 186-197, 204-206
+set smokepuff1 2:233-246
+set smokepuff2 2:303-330
+set smokepuff3 2:293-302, 3:285-290
+set spoke01 3:36-39, 104
+set spoke02 3:249-253
+set spoke03 3:98, 245-248
+set spoke04 3:94, 240-244
+set spoke05 3:90, 236-239
+set spoke06 3:86, 232-235
+set spoke07 3:82, 228-231
+set spoke08 3:78, 224-227
+set spoke09 3:74, 215-218
+set spoke10 3:70, 211-214
+set spoke11 3:207-210
+set spoke12 3:198-200
+set spoke13 3:201-203
+set spoke14 3:13-15
+set spoke15 3:16-20
+set spoke16 3:7-10
