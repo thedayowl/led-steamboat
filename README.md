@@ -92,7 +92,7 @@ More light gives a higher reading. If you wire it the other way round, set `LIGH
 - **Web page:** `http://steamboat.local`, or the IP shown by `info`. Log in with user name **admin** and the admin password (default `steamboat`; change it, see [Network settings](#network-settings)). If no home network is set, or it can't be joined within 20 s, the board starts its **setup access point**: join it (default name `Steamboat-Setup`, WPA2 password `steamboat`) and browse to `http://192.168.4.1`. Holding the Function button 5 s also starts the access point.
 - **Serial console:** USB-C, 115200 baud (PlatformIO monitor, PuTTY, or Arduino Serial Monitor). Press **Enter**. The show keeps running until you start a test, and `run` goes back to the show. If there's no input for 15 minutes, it returns to the show by itself. No password is needed over USB.
 
-LED numbers start at **0**. Channels and section numbers start at **1**. Sections can be named loosely: `roof`, `puff2`, `spokesa`, `wheelhousedoor`.
+LED numbers start at **0**. Channels and section numbers start at **1**. Sections can be named loosely: `roof`, `puff2`, `spoke07`, `wheelhousedoor`.
 
 ## Network settings
 
@@ -122,11 +122,11 @@ A section is a comma-separated list of runs: `channel:first-last`.
 | `1:0-10, 40-50, 90-80` | the channel can be left off to reuse the previous one |
 | `1:90-120, 1:200-170, 2:5-9` | pieces on two strings |
 
-**Order matters for the waterline.** The water flows from the first LED of the first run to the last LED of the last run. So list the pieces in the order they sit along the boat, and write each piece in the direction the water should travel. Use first > last for any piece that's wired backwards. `rev <section>` flips the whole section if it ends up flowing the wrong way. For static, smoke and spoke sections the order doesn't matter. A section can have up to 12 runs; change `MAX_RUNS_PER_SECTION` in `config.h` if you need more.
+**Order matters for the waterline.** The water flows from the first LED of the first run to the last LED of the last run. So list the pieces in the order they sit along the boat, and write each piece in the direction the water should travel. Use first > last for any piece that's wired backwards. `rev <section>` flips the whole section if it ends up flowing the wrong way. For static, smoke and spoke sections the order doesn't matter. A section can have up to 16 runs; change `MAX_RUNS_PER_SECTION` in `config.h` if you need more.
 
 ## Mapping the strings (first-time setup)
 
-The section table in `config.h` uses placeholder LED numbers. Map the real build like this.
+The section table in `config.h` is generated from the planned string routing in [layout/routing/](layout/routing/README.md): channel 1 is panel 1, channel 2 is panel 2, channel 3 is panel 3, and output 4 is unused. If the strings are wired exactly as routed, check it with steps 1, 4 and 5 below. Otherwise, or if any count is off, map the real build like this.
 
 1. **Color order:** `rgb 1`. LED 0 should be red, LED 1 green, LED 2 blue. If not, try `chan 1 order GRB` (or BRG, RBG...) until it is. Repeat for channels 2–4.
 2. **LED count per channel:** `ruler 1` lights LED 0 green, every 5th blue, every 10th red and every 100th magenta, so you can count along the string. Then `chan 1 count 287` (your number). `fill 1` lights the whole channel to confirm the count.
@@ -140,7 +140,7 @@ The section table in `config.h` uses placeholder LED numbers. Map the real build
    - `s waterline` sends a white dot through the section in animation order, with each run's start green and end red. This is the way to confirm the water direction and the run order.
    - `ends` shows the start and end of every run of every section.
    - `check` reports overlaps, LEDs used twice, runs past the end of a channel, and LEDs not in any section.
-5. **Animation order.** Puff 1 is the one nearest the stack. Spokes A→B→C is the direction the light travels. If the wheel turns backwards, type `wheeldir`. If the water flows the wrong way, type `rev waterline`.
+5. **Animation order.** Puff 1 is the one nearest the stack. Each spoke is its own section (`Spoke 01`…`Spoke 16`), and its group (1, 2, 3, the sets A, B, C) sets the order the light travels. If the wheel turns backwards, type `wheeldir`. If the water flows the wrong way, type `rev waterline`.
 6. **`save`.** Until you save, changes are live but lost on reboot. The prompt shows `*` when there are unsaved changes.
 7. **Download a backup** (next section) once it's all mapped.
 

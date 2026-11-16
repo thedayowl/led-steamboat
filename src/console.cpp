@@ -52,7 +52,7 @@ static void printLines(Print& out, const char* text) {
 
 static const char* kHelp = R"(
 Steamboat console. LED numbers start at 0, channels and sections at 1.
-Sections can be given by number (see 'list') or name ("roof", "puff2", "spokesa").
+Sections can be given by number (see 'list') or name ("roof", "puff2", "spoke07").
 
  Finding LEDs
   p <ch> <led>         light one LED (the cursor)      p <led>  same channel
