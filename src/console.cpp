@@ -113,6 +113,12 @@ Sections can be given by number (see 'list') or name ("roof", "puff2", "spoke07"
   backup               print the configuration as commands (paste back to restore)
   backup secrets       same, including Wi-Fi/AP/admin passwords
 
+ Firmware update from GitHub releases (needs internet on the home Wi-Fi)
+  update               check for a newer release
+  update install       download and install the latest release, then restart
+  update install <tag> install a given release, e.g. v1.3.0 (also to go back)
+  update status        progress of a running update
+
   info   reboot   help
 )";
 
@@ -762,6 +768,18 @@ static void doCommand(const String& line, Print& out) {
                (unsigned long)ESP.getFreeHeap(), g_on ? "on" : "off", g_dirty ? ", UNSAVED changes" : "");
     if (sensorPresent()) sensorStatus(out);
     listChannels(out);
+    return;
+  }
+
+  if (cmd == "update" || cmd == "upgrade") {
+    String w = n >= 2 ? t[1] : String("check");
+    w.toLowerCase();
+    bool ok = true;
+    if (w == "check") ok = ghCheck(out);
+    else if (w == "install") ok = ghInstall(n >= 3 ? t[2] : String(""), out);
+    else if (w == "status") ghStatus(out);
+    else { fail(out, "Usage: update [check|install [tag]|status]\r\n"); return; }
+    if (!ok) s_failed = true;
     return;
   }
 

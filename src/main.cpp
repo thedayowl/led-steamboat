@@ -199,7 +199,17 @@ void loop() {
   consoleTick(now);
   relayTick();
 
-  if (now - s_lastFrame >= FRAME_MS) {
+  // While a GitHub update downloads, send one dark frame and then leave the
+  // LEDs alone, so flash writes can't disturb the output.
+  static bool blanked = false;
+  if (ghBusy()) {
+    if (!blanked) {
+      blanked = true;
+      for (int c = 0; c < NUM_CHANNELS; c++) memset(Leds::buffer(c), 0, g_chan[c].count * 3);
+      Leds::show(0, s_orders);
+    }
+  } else if (now - s_lastFrame >= FRAME_MS) {
+    blanked = false;
     s_lastFrame = now;
     for (int c = 0; c < NUM_CHANNELS; c++) { s_orders[c] = g_chan[c].order; Leds::setType(c, g_chan[c].type); }
     displayRender(now);

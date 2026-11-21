@@ -132,6 +132,18 @@ void updatePinRouting();
 void webBegin();
 void webLoop();
 
+// ghupdate.cpp - firmware updates from GitHub releases
+enum GhState : uint8_t { GH_IDLE = 0, GH_CHECKING, GH_DOWNLOADING, GH_DONE, GH_FAILED };
+bool        ghCheck(Print& out);                       // ask GitHub for the latest release
+bool        ghInstall(const String& tag, Print& out);  // "" = latest if newer; starts a background download
+void        ghStatus(Print& out);
+bool        ghNewer(const char* tag);                  // release newer than the running firmware?
+GhState     ghState();
+bool        ghBusy();                                  // downloading or about to restart: keep LEDs dark
+int         ghPercent();                               // -1 unknown
+const char* ghLatest();                                // tag from the last check, "" if none
+const char* ghMessage();
+
 // main.cpp
 String netInfo();
 void   startSetupAP();

@@ -77,6 +77,10 @@ static const LedType    DEFAULT_CHANNEL_TYPE[NUM_CHANNELS]  = { LED_WS2811, LED_
 // Password for the web page (user name "admin") and for OTA uploads.
 #define ADMIN_PASSWORD   "steamboat"
 #define WIFI_CONNECT_TIMEOUT_MS 20000
+// GitHub repository whose releases 'update' checks and installs from. Each
+// release must have a led-steamboat-<version>-ota.bin asset (the CI build
+// attaches one when a v* tag is pushed).
+#define GITHUB_REPO      "thedayowl/led-steamboat"
 
 // ============================================================================
 // Show defaults (all changeable at runtime and saved with "save")

@@ -11,7 +11,7 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 - **Test tools** on the serial console and the web page, for finding LEDs and mapping sections without recompiling.
 - **Photoresistor** on GPIO33 to turn the display off in daylight.
 - **Backup and restore** of the whole configuration as an editable text file.
-- **Firmware updates** from the web page or PlatformIO over Wi-Fi.
+- **Firmware updates** straight from GitHub releases, or by upload from the web page or PlatformIO over Wi-Fi.
 - Password-protected web page. Wi-Fi network, setup access point (WPA2) and admin password are all configurable at runtime.
 - LED power relay and the Function button.
 
@@ -25,6 +25,7 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 | `src/display.cpp` | Sections and runs, effects, test patterns, saved settings |
 | `src/console.cpp` | Serial console commands (the web page uses the same commands), backup |
 | `src/web.cpp` | Web page, restore, firmware upload |
+| `src/ghupdate.cpp` | Checks GitHub for a newer release and installs it over Wi-Fi |
 | `src/led_driver.*` | 4-channel WS2811/WS2812B output on the ESP32 RMT peripheral (no external libraries) |
 | `scripts/version.py` | Build step: sets the firmware version from the git tag |
 | `scripts/factory.py` | Build step: writes `factory.bin`, the full flash image |
@@ -163,10 +164,13 @@ You can read and edit it.
 
 Settings are kept across updates. They're stored separately from the firmware.
 
+- **From GitHub:** web page > **Firmware update** > **Check GitHub for updates**. If a newer release exists, an **Install v1.x.x** button appears. It downloads the release's `-ota.bin` straight from GitHub, shows a progress bar, then restarts. The LEDs are dark while it installs. This needs the board connected to a home Wi-Fi network with internet access; in access-point-only mode the option is hidden. The connection to GitHub is HTTPS, with the certificate checked, so only this repository's releases can be installed. The console commands do the same: `update` checks, `update install` installs the latest release if it's newer, and `update install v1.2.0` installs a specific release, including older ones. The repository is set by `GITHUB_REPO` in `include/config.h`.
 - **From the web page:** **Firmware update** > choose the `.bin` > **Upload firmware**. A progress bar shows the upload, then the board restarts and the page reconnects. Use the `-ota.bin` file from a release, or after a PlatformIO build use `.pio/build/usb/firmware.bin`. Don't upload `factory.bin` here. In Arduino IDE, use Sketch > Export Compiled Binary. A file that isn't an ESP32 firmware image is rejected without touching the running firmware.
 - **From PlatformIO over Wi-Fi:** `pio run -e ota -t upload`. The `--auth=` value in `platformio.ini` must match the admin password.
 
 If a new firmware version adds, removes or renames rows in the section table, it starts with the compiled defaults for sections. Download a backup before updating and restore it afterwards.
+
+**Version 1.4.0 changes the partition layout.** The two firmware slots grew from 1.25 MB to 1.875 MB to make room for the HTTPS code. A board running 1.3.0 or older can't take 1.4.0 over Wi-Fi. Flash it once over USB with `pio run -e usb -t upload`; that writes the new partition table and keeps the settings. Updates over Wi-Fi work as before after that.
 
 ## Daylight auto-off
 
@@ -193,6 +197,7 @@ bright <0-255>   speed <water|smoke|wheel> <%>   floor <0-255>   fade <0-255>   
 sensor [on|off|dark n|day n|delay s]   on   off
 wifi [ssid <name> | pass <pw> | off]   ap ssid <name>   ap pass <pw>   admin pass <pw>
 backup [secrets]   save   reload   defaults   info   reboot
+update   update install [v1.x.x]   update status    firmware from GitHub releases
 ```
 
 The web page has a console box that takes the same commands. You can also run single commands from a browser address bar, for example `http://steamboat.local/api/cmd?c=ends`; the browser asks for the admin login.

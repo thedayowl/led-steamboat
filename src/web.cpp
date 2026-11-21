@@ -2,6 +2,7 @@
 // Everything except the firmware upload goes through the same command
 // interpreter as the serial console. All pages need the admin password
 // (user name "admin").
+#include <WiFi.h>
 #include <WebServer.h>
 #include <Update.h>
 #include "app.h"
@@ -105,6 +106,11 @@ Mark with the cursor: <b>Start</b> begins the section over at the cursor, <b>Add
 <pre id="rlog" style="height:auto;max-height:200px;display:none"></pre>
 </section>
 <section><h2>Firmware update</h2>
+<div id="ghBox" style="display:none">
+<div class="row"><button onclick="ghCheck()">Check GitHub for updates</button><button id="ghInst" class="warn" style="display:none" onclick="ghInstall()"></button><progress id="ghProg" max="100" value="0" style="display:none"></progress><span id="ghStat"></span></div>
+<div class="muted">Downloads the release from GitHub. Settings are kept. The LEDs go dark while it installs, then the controller restarts. Console: <code>update install v1.2.0</code> installs a specific (or older) release.</div>
+</div>
+<div id="ghOff" class="muted" style="display:none">Updating from GitHub is available when the controller is connected to a home Wi-Fi network with internet access.</div>
 <div class="row"><input type="file" id="ffile" accept=".bin"><button class="warn" onclick="upload()">Upload firmware</button><progress id="fprog" max="100" value="0" style="display:none"></progress><span id="fstat"></span></div>
 <div class="muted">Use <code>.pio/build/usb/firmware.bin</code> (PlatformIO) or Sketch &gt; Export Compiled Binary (Arduino IDE). Settings are kept. Download a backup first if the new firmware changes the section list.</div>
 </section>
@@ -150,6 +156,7 @@ async function load(rebuild,lite){
   $('net').textContent=S.net; $('dirty').innerHTML=S.dirty?'<span class="dirty">unsaved changes</span>':'';
   $('sensorBox').style.display=S.sensor?'':'none';
   $('lightNow').textContent=`Light now ${S.light}% (raw ${S.raw})  sensor says ${S.day?'DAY':'NIGHT'}  display ${S.lit?'LIT':(S.on?'dark (daylight)':'OFF')}`;
+  showGh();
   if(lite)return;
   $('autoDark').checked=!!S.autoDark; if(document.activeElement!=$('sensorDelay'))$('sensorDelay').value=S.sensorDelay;
   for(const k of ['bright','waterSpeed','smokeSpeed','wheelSpeed','floor','fade','darkLevel','dayLevel']){$(k).value=S[k];$(k+'v').textContent=S[k];}
@@ -198,6 +205,23 @@ async function restore(){
     body:'text='+encodeURIComponent(text)+'&save='+($('rsave').checked?1:0)});
   const log=$('rlog'); log.style.display=''; log.textContent=await r.text();
   await load(true);
+}
+// GitHub update. gh.state: 0 idle, 1 checking, 2 downloading, 3 done (restarting), 4 failed
+let ghReload=0;
+function showGh(){
+  const g=S.gh; if(!g)return;
+  const on=g.online||g.state==2||g.state==3;   // keep showing a running update
+  $('ghBox').style.display=on?'':'none'; $('ghOff').style.display=on?'none':'';
+  $('ghStat').textContent=g.state==2&&g.pct>=0?`${g.msg} ${g.pct}%`:g.msg;
+  $('ghProg').style.display=g.state==2?'':'none'; if(g.pct>=0)$('ghProg').value=g.pct;
+  $('ghInst').style.display=g.newer&&g.state!=2&&g.state!=3?'':'none'; $('ghInst').textContent='Install '+g.latest;
+  if(g.state==3&&!ghReload)ghReload=setTimeout(()=>location.reload(),20000);
+  if(g.state==2)setTimeout(()=>load(false,true).catch(()=>{}),1000);
+}
+async function ghCheck(){$('ghStat').textContent='Checking GitHub...';await cmd('update check')}
+function ghInstall(){
+  if(!confirm('Download '+S.gh.latest+' from GitHub, install it, and restart the controller?'))return;
+  cmd('update install '+S.gh.latest);
 }
 function upload(){
   const f=$('ffile').files[0]; if(!f){alert('Choose a .bin file first');return}
@@ -276,9 +300,16 @@ static void handleState() {
     j += formatRuns(i);
     j += "\"}";
   }
+  // GitHub updates need the home network (station mode); hidden in AP-only mode.
+  snprintf(buf, sizeof(buf), "],\"gh\":{\"online\":%d,\"state\":%d,\"pct\":%d,\"newer\":%d,\"latest\":\"%s\",\"msg\":\"",
+           WiFi.status() == WL_CONNECTED ? 1 : 0, (int)ghState(), ghPercent(),
+           ghLatest()[0] && ghNewer(ghLatest()) ? 1 : 0, ghLatest());
+  j += buf;
+  j += jsonEscape(String(ghMessage()));
+  j += "\"}";
   StringOut problems;
   validate(problems, true);
-  j += "],\"problems\":\"" + jsonEscape(problems.s) + "\"}";
+  j += ",\"problems\":\"" + jsonEscape(problems.s) + "\"}";
   s_server.sendHeader("Cache-Control", "no-store");
   s_server.send(200, "application/json", j);
 }
@@ -359,6 +390,7 @@ static void handleRestore() {
 // ---------------------------------------------------------------- firmware upload
 
 static bool   s_otaAuthed = false;
+static bool   s_otaMine = false;   // this upload started Update (so it may end or abort it)
 static String s_otaError;
 
 static void otaBlankLeds() {
@@ -371,19 +403,24 @@ static void handleUpdateChunk() {
   HTTPUpload& up = s_server.upload();
   if (up.status == UPLOAD_FILE_START) {
     s_otaError = "";
+    s_otaMine = false;
     s_otaAuthed = s_server.authenticate("admin", g_net.adminPass);
     if (!s_otaAuthed) return;
+    // Never touch an update that is already running (e.g. a GitHub download).
+    if (ghBusy() || Update.isRunning()) { s_otaError = "Another firmware update is in progress."; return; }
     otaBlankLeds();
-    if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) s_otaError = String("Could not start update: ") + Update.errorString();
+    s_otaMine = Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH);
+    if (!s_otaMine) s_otaError = String("Could not start update: ") + Update.errorString();
   } else if (up.status == UPLOAD_FILE_WRITE) {
-    if (!s_otaAuthed || s_otaError.length()) return;
+    if (!s_otaMine || s_otaError.length()) return;
     if (Update.write(up.buf, up.currentSize) != up.currentSize)
       s_otaError = String("Write failed (is this an ESP32 firmware .bin?): ") + Update.errorString();
   } else if (up.status == UPLOAD_FILE_END) {
-    if (!s_otaAuthed || s_otaError.length()) { if (s_otaAuthed) Update.abort(); return; }
+    if (!s_otaMine) return;
+    if (s_otaError.length()) { Update.abort(); return; }
     if (!Update.end(true)) s_otaError = String("Update failed: ") + Update.errorString();
   } else if (up.status == UPLOAD_FILE_ABORTED) {
-    if (s_otaAuthed) Update.abort();
+    if (s_otaMine) Update.abort();
     s_otaError = "Upload aborted.";
   }
 }
