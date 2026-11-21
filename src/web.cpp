@@ -108,7 +108,7 @@ Mark with the cursor: <b>Start</b> begins the section over at the cursor, <b>Add
 <div class="row"><input type="file" id="ffile" accept=".bin"><button class="warn" onclick="upload()">Upload firmware</button><progress id="fprog" max="100" value="0" style="display:none"></progress><span id="fstat"></span></div>
 <div class="muted">Use <code>.pio/build/usb/firmware.bin</code> (PlatformIO) or Sketch &gt; Export Compiled Binary (Arduino IDE). Settings are kept. Download a backup first if the new firmware changes the section list.</div>
 </section>
-<section><h2>Console</h2><div class="row"><input id="cl" style="flex:1" placeholder="command (help for list)" onkeydown="if(event.key=='Enter'){cmd(this.value);this.value=''}"><button onclick="cmd('help')">Help</button></div><pre id="log"></pre></section>
+<section><h2>Console</h2><div class="row"><input id="cl" style="flex:1" placeholder="command (help for list, up/down for history)" onkeydown="clKey(event)"><button onclick="cmd('help')">Help</button></div><pre id="log"></pre></section>
 </main>
 <script>
 let S=null;
@@ -116,6 +116,24 @@ const $=id=>document.getElementById(id);
 const ch=()=>$('ch').value;
 function hex(c){return '#'+c.toLowerCase()}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
+// Console input history: up/down like a shell. Kept in this browser (last 50);
+// password commands are never stored.
+let H=[];try{H=JSON.parse(localStorage.getItem('hist')||'[]')}catch(e){}
+let hi=H.length,draft='';
+function clKey(e){
+  const el=e.target;
+  if(e.key=='Enter'){
+    const c=el.value; if(!c.trim())return;
+    if(!/^\s*(wifi|ap|admin)\s+pass/i.test(c)&&H[H.length-1]!==c){H.push(c);if(H.length>50)H.shift();try{localStorage.setItem('hist',JSON.stringify(H))}catch(e){}}
+    hi=H.length;draft='';el.value='';cmd(c);
+  }else if(e.key=='ArrowUp'||e.key=='ArrowDown'){
+    e.preventDefault();
+    if(e.key=='ArrowUp'){if(hi==0)return;if(hi==H.length)draft=el.value;hi--;}
+    else{if(hi>=H.length)return;hi++;}
+    el.value=hi<H.length?H[hi]:draft;
+    el.setSelectionRange(el.value.length,el.value.length);
+  }
+}
 async function cmd(c,keepTable){
   const r=await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'c='+encodeURIComponent(c)});
   const t=await r.text(); const log=$('log');
