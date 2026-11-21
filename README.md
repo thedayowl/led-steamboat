@@ -26,6 +26,7 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 | `src/console.cpp` | Serial console commands (the web page uses the same commands), backup |
 | `src/web.cpp` | Web page, restore, firmware upload |
 | `src/ghupdate.cpp` | Checks GitHub for a newer release and installs it over Wi-Fi |
+| `src/migrate.cpp` | First boot after installing over WLED: converts the partition table, imports WLED's Wi-Fi |
 | `src/led_driver.*` | 4-channel WS2811/WS2812B output on the ESP32 RMT peripheral (no external libraries) |
 | `scripts/version.py` | Build step: sets the firmware version from the git tag |
 | `scripts/factory.py` | Build step: writes `factory.bin`, the full flash image |
@@ -44,7 +45,14 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 
 **Prebuilt firmware:** each [GitHub release](https://github.com/thedayowl/led-steamboat/releases) has two files:
 - `led-steamboat-<version>-factory.bin`: the full image (bootloader, partition table and app) for a new board or one running WLED. Flash it at offset 0x0, for example `esptool.py --chip esp32 write_flash 0x0 led-steamboat-1.2.0-factory.bin` or with the [ESP web flasher](https://espressif.github.io/esptool-js/).
-- `led-steamboat-<version>-ota.bin`: the app only, for boards already running this firmware. See [Firmware updates](#firmware-updates).
+- `led-steamboat-<version>-ota.bin`: the app only, for boards already running this firmware (see [Firmware updates](#firmware-updates)), or for a WLED board without USB (below).
+
+**From WLED over Wi-Fi (no USB):** a board running WLED can install this firmware through WLED's own update page:
+1. In WLED, open **Config > Security & Updates > Manual OTA Update**. If **OTA lock** or a settings PIN is set, unlock it first.
+2. Choose `led-steamboat-<version>-ota.bin`, tick **Ignore firmware validation** (WLED 0.15 and later refuse other firmware without it), and update.
+3. On its first start the firmware converts WLED's partition table to its own and restarts. If the image landed in WLED's second slot, it first copies itself to the first. It also imports WLED's saved Wi-Fi network and password, so it comes back on your network at `http://steamboat.local`. Without a saved network it starts the setup access point.
+
+This keeps WLED's bootloader, which works: tested with WLED 0.15.3 on IDF 3.3 and IDF 4.4 bootloaders, in both slots, followed by an update from GitHub. The serial console shows each step (`Migrate: ...`), and `partitions` shows the current layout. A power cut during the conversion is harmless except during the table write itself, which takes about 0.1 s; after that the board needs a USB flash. Going back to WLED: upload a WLED `.bin` on this firmware's **Firmware update** page (WLED then runs with this firmware's partition layout).
 
 ## Versions and releases
 
@@ -196,7 +204,7 @@ chan <ch> count <n>   chan <ch> order <RGB|GRB|...>   chan <ch> type <WS2811|WS2
 bright <0-255>   speed <water|smoke|wheel> <%>   floor <0-255>   fade <0-255>   wheeldir [normal|reversed]
 sensor [on|off|dark n|day n|delay s]   on   off
 wifi [ssid <name> | pass <pw> | off]   ap ssid <name>   ap pass <pw>   admin pass <pw>
-backup [secrets]   save   reload   defaults   info   reboot
+backup [secrets]   save   reload   defaults   info   partitions   reboot
 update   update install [v1.x.x]   update status    firmware from GitHub releases
 ```
 

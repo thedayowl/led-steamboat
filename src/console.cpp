@@ -118,6 +118,7 @@ Sections can be given by number (see 'list') or name ("roof", "puff2", "spoke07"
   update install       download and install the latest release, then restart
   update install <tag> install a given release, e.g. v1.3.0 (also to go back)
   update status        progress of a running update
+  partitions           flash layout (a WLED layout is converted on first boot)
 
   info   reboot   help
 )";
@@ -770,6 +771,8 @@ static void doCommand(const String& line, Print& out) {
     listChannels(out);
     return;
   }
+
+  if (cmd == "partitions" || cmd == "parts") { partitionReport(out); return; }
 
   if (cmd == "update" || cmd == "upgrade") {
     String w = n >= 2 ? t[1] : String("check");

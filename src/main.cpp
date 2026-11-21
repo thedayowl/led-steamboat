@@ -154,8 +154,16 @@ static void wifiBegin() {
 }
 
 static void wifiTick(uint32_t now) {
+  static uint32_t lastRetry = 0;
   bool connected = WiFi.status() == WL_CONNECTED;
-  if (!s_apOn && g_net.staSsid[0] && !connected && now - s_wifiStart > WIFI_CONNECT_TIMEOUT_MS) startSetupAP();
+  if (!s_apOn && g_net.staSsid[0] && !connected && now - s_wifiStart > WIFI_CONNECT_TIMEOUT_MS) { startSetupAP(); lastRetry = now; }
+  // The core's auto-reconnect gives up after some failures (e.g. a WPA
+  // handshake timeout), which would leave the board on its setup AP for good.
+  // Keep trying the home network every minute; the AP stays up meanwhile.
+  if (s_apOn && g_net.staSsid[0] && !connected && now - lastRetry > 60000) {
+    lastRetry = now;
+    WiFi.begin(g_net.staSsid, g_net.staPass);
+  }
   if ((connected || s_apOn) && !s_netServicesStarted) startNetServices();
 }
 
@@ -181,6 +189,7 @@ void setup() {
 
   if (!Leds::begin(LED_PINS, NUM_CHANNELS)) Serial.print("WARNING: an LED output failed to start\r\n");
   loadConfig();                // also sets LED counts and network settings
+  migrateIfNeeded(Serial);     // first boot after installing over WLED: fix the partition table, restart
   if (validate(Serial, false)) Serial.print("Section table has errors; type 'check' in the console.\r\n");
   sensorTick(millis());        // first reading decides day/night immediately
   consoleBegin();              // after this, serial output may be muted if GPIO1 drives LEDs

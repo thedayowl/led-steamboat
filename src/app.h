@@ -144,6 +144,10 @@ int         ghPercent();                               // -1 unknown
 const char* ghLatest();                                // tag from the last check, "" if none
 const char* ghMessage();
 
+// migrate.cpp - convert a WLED (or other) partition table to ours on first boot
+void        migrateIfNeeded(Print& out);   // may restart
+void        partitionReport(Print& out);
+
 // main.cpp
 String netInfo();
 void   startSetupAP();
