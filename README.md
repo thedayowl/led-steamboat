@@ -25,7 +25,7 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 | `src/display.cpp` | Sections and runs, effects, test patterns, saved settings |
 | `src/console.cpp` | Serial console commands (the web page uses the same commands), backup |
 | `src/web.cpp` | Web page, restore, firmware upload |
-| `src/led_driver.*` | 4-channel WS2811 output on the ESP32 RMT peripheral (no external libraries) |
+| `src/led_driver.*` | 4-channel WS2811/WS2812B output on the ESP32 RMT peripheral (no external libraries) |
 | `scripts/version.py` | Build step: sets the firmware version from the git tag |
 | `scripts/factory.py` | Build step: writes `factory.bin`, the full flash image |
 
@@ -128,7 +128,7 @@ A section is a comma-separated list of runs: `channel:first-last`.
 
 The section table in `config.h` is generated from the planned string routing in [layout/routing/](layout/routing/README.md): channel 1 is panel 1, channel 2 is panel 2, channel 3 is panel 3, and output 4 is unused. If the strings are wired exactly as routed, check it with steps 1, 4 and 5 below. Otherwise, or if any count is off, map the real build like this.
 
-1. **Color order:** `rgb 1`. LED 0 should be red, LED 1 green, LED 2 blue. If not, try `chan 1 order GRB` (or BRG, RBG...) until it is. Repeat for channels 2–4.
+1. **LED type and color order:** every channel defaults to WS2811. For other strings, such as WS2812B for testing, type `chan 1 type ws2812b` (or pick it in the web page's Channels table). That switches the data timing and sets the chip's usual color order. Types: `WS2811`, `WS2812B` (also WS2812, WS2813, WS2815 and SK6812 RGB), and `WS2811-400K` for older strings wired for 400 kHz. Then `rgb 1`. LED 0 should be red, LED 1 green, LED 2 blue. If not, try `chan 1 order GRB` (or BRG, RBG...) until it is. Repeat for channels 2–4.
 2. **LED count per channel:** `ruler 1` lights LED 0 green, every 5th blue, every 10th red and every 100th magenta, so you can count along the string. Then `chan 1 count 287` (your number). `fill 1` lights the whole channel to confirm the count.
 3. **Mark each section with the cursor.** Move the cursor with `p 1 0`, `+`/`-` (±1), `]`/`[` (±10) or the arrow keys. Every move prints which section that LED is currently in. `walk 1` steps along automatically, and any key stops it.
    - `ms hull`: start the section over, with its first run beginning at the cursor.
@@ -147,7 +147,7 @@ The section table in `config.h` is generated from the planned string routing in 
 ## Backup and restore
 
 A backup is a plain text file of console commands covering:
-- channel LED counts and color orders
+- channel LED counts, LED types and color orders
 - every section's runs, color and direction
 - show settings and light sensor settings
 - the Wi-Fi and AP names
@@ -188,7 +188,7 @@ r <ch> <a> <b>   ruler <ch>   fill <ch> [RRGGBB]   rgb <ch>   s <section>   ends
 list   chans   check
 ms <sec>   ma <sec>   me <sec>        start / add run / end run at the cursor
 set <sec> <runs>   add <sec> <runs>   clear <sec>   color <sec> <RRGGBB>   rev <sec> [on|off]
-chan <ch> count <n>   chan <ch> order <RGB|GRB|...>
+chan <ch> count <n>   chan <ch> order <RGB|GRB|...>   chan <ch> type <WS2811|WS2812B|WS2811-400K>
 bright <0-255>   speed <water|smoke|wheel> <%>   floor <0-255>   fade <0-255>   wheeldir [normal|reversed]
 sensor [on|off|dark n|day n|delay s]   on   off
 wifi [ssid <name> | pass <pw> | off]   ap ssid <name>   ap pass <pw>   admin pass <pw>

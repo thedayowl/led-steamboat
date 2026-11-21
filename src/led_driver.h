@@ -8,6 +8,8 @@ namespace Leds {
   bool     begin(const uint8_t* pins, uint8_t numChannels);
   void     setCount(uint8_t ch, uint16_t count);
   uint16_t count(uint8_t ch);
+  // LED chip (LedType in types.h): sets the bit timing. Takes effect at the next show().
+  void     setType(uint8_t ch, uint8_t type);
   uint8_t* buffer(uint8_t ch);   // RGB, 3 bytes per LED, MAX_LEDS_PER_CHANNEL long
   // Apply brightness and per-channel color order, then transmit all channels.
   void     show(uint8_t brightness, const uint8_t* colorOrders);

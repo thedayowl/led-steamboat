@@ -201,7 +201,7 @@ void loop() {
 
   if (now - s_lastFrame >= FRAME_MS) {
     s_lastFrame = now;
-    for (int c = 0; c < NUM_CHANNELS; c++) s_orders[c] = g_chan[c].order;
+    for (int c = 0; c < NUM_CHANNELS; c++) { s_orders[c] = g_chan[c].order; Leds::setType(c, g_chan[c].type); }
     displayRender(now);
     Leds::show(g_set.brightness, s_orders);
   }

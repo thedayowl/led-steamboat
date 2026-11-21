@@ -84,6 +84,7 @@ Sections can be given by number (see 'list') or name ("roof", "puff2", "spoke07"
   color <section> <RRGGBB>
   rev <section> [on|off]  play the section in the opposite order (water direction)
   chan <ch> count <n>  LEDs on a channel     chan <ch> order <RGB|GRB|BRG...>
+  chan <ch> type <WS2811|WS2812B|WS2811-400K>  LED chip (sets its usual order)
   save                 write to flash        reload  discard unsaved changes
   defaults             compiled-in show/section defaults (network unchanged)
 
@@ -277,10 +278,10 @@ static void listSections(Print& out) {
 }
 
 static void listChannels(Print& out) {
-  out.print(" Ch  GPIO  LEDs  Order\r\n");
+  out.print(" Ch  GPIO  LEDs  Order  Type\r\n");
   for (int c = 0; c < NUM_CHANNELS; c++)
-    out.printf(" %2d  %4d  %4u  %s%s\r\n", c + 1, LED_PINS[c], g_chan[c].count, orderName(g_chan[c].order),
-               Leds::ok(c) ? "" : "  (output failed to start)");
+    out.printf(" %2d  %4d  %4u  %-5s  %s%s\r\n", c + 1, LED_PINS[c], g_chan[c].count, orderName(g_chan[c].order),
+               ledTypeName(g_chan[c].type), Leds::ok(c) ? "" : "  (output failed to start)");
 }
 
 static void showNetwork(Print& out) {
@@ -335,6 +336,7 @@ void writeBackup(Print& out, bool secrets) {
   out.print("\r\n# Channels\r\n");
   for (int c = 0; c < NUM_CHANNELS; c++) {
     out.printf("chan %d count %u\r\n", c + 1, g_chan[c].count);
+    out.printf("chan %d type %s\r\n", c + 1, ledTypeName(g_chan[c].type));     // before order: type sets a usual order
     out.printf("chan %d order %s\r\n", c + 1, orderName(g_chan[c].order));
   }
   out.print("\r\n# Sections\r\n");
@@ -585,7 +587,7 @@ static void doCommand(const String& line, Print& out) {
 
   if (cmd == "chan") {
     uint8_t ch;
-    if (n < 4) { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>\r\n"); return; }
+    if (n < 4) { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>  |  chan <ch> type <WS2811|WS2812B|WS2811-400K>\r\n"); return; }
     if (!argChannel(t[1], ch, out)) return;
     String what = t[2]; what.toLowerCase();
     if (what == "count") {
@@ -597,7 +599,16 @@ static void doCommand(const String& line, Print& out) {
       int o = parseOrder(t[3]);
       if (o < 0) { fail(out, "Order must be RGB, RBG, GRB, GBR, BRG or BGR\r\n"); return; }
       g_chan[ch].order = (uint8_t)o;
-    } else { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>\r\n"); return; }
+    } else if (what == "type") {
+      int ty = parseLedType(t[3]);
+      if (ty < 0) { fail(out, "Type must be WS2811, WS2812B (also WS2812, WS2813, WS2815, SK6812) or WS2811-400K\r\n"); return; }
+      if (ty != g_chan[ch].type) {   // a new chip usually means a new color order too
+        g_chan[ch].type = (uint8_t)ty;
+        g_chan[ch].order = ledTypeOrder(ty);
+        out.printf("Color order set to %s, usual for %s. Check with 'rgb %d'; change with 'chan %d order ...'.\r\n",
+                   orderName(g_chan[ch].order), ledTypeName(ty), ch + 1, ch + 1);
+      }
+    } else { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>  |  chan <ch> type <WS2811|WS2812B|WS2811-400K>\r\n"); return; }
     changed();
     listChannels(out);
     return;

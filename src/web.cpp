@@ -65,7 +65,7 @@ Mark with the cursor: <b>Start</b> begins the section over at the cursor, <b>Add
 <table><thead><tr><th>#</th><th>Section</th><th>Anim</th><th>Runs</th><th>LEDs</th><th>Color</th><th>Rev</th><th></th></tr></thead><tbody id="secs"></tbody></table>
 <pre id="problems" style="height:auto;max-height:160px;color:#fc6"></pre>
 </section>
-<section><h2>Channels</h2><table><thead><tr><th>Ch</th><th>GPIO</th><th>LEDs</th><th>Color order</th><th></th></tr></thead><tbody id="chans"></tbody></table></section>
+<section><h2>Channels</h2><table><thead><tr><th>Ch</th><th>GPIO</th><th>LEDs</th><th>LED type</th><th>Color order</th><th></th></tr></thead><tbody id="chans"></tbody></table></section>
 <section><h2>Show</h2>
 <div class="slider"><label>Brightness</label><input type="range" id="bright" min="0" max="255" onchange="cmd('bright '+this.value)"><span id="brightv"></span></div>
 <div class="slider"><label>Water speed %</label><input type="range" id="waterSpeed" min="0" max="400" onchange="cmd('speed water '+this.value)"><span id="waterSpeedv"></span></div>
@@ -140,8 +140,9 @@ async function load(rebuild,lite){
   if($('ch').options.length!=S.channels.length){$('ch').innerHTML=S.channels.map((c,i)=>`<option value="${i+1}">${i+1} (GPIO${c.pin})</option>`).join('');}
   if(document.activeElement!=$('ch'))$('ch').value=S.test.ch; if(document.activeElement!=$('led'))$('led').value=S.test.led;
   $('chans').innerHTML=S.channels.map((c,i)=>`<tr><td>${i+1}</td><td>${c.pin}</td><td><input type=number id="cc${i}" value="${c.count}" min=0 max=${S.maxLeds}></td>
+   <td><select id="ct${i}" onchange="$('co${i}').value=S.types[this.selectedIndex].order">${S.types.map(t=>`<option${t.name==c.type?' selected':''}>${t.name}</option>`).join('')}</select></td>
    <td><select id="co${i}">${['RGB','RBG','GRB','GBR','BRG','BGR'].map(o=>`<option${o==c.order?' selected':''}>${o}</option>`).join('')}</select></td>
-   <td><button onclick="cmd('chan ${i+1} count '+$('cc${i}').value+'\\nchan ${i+1} order '+$('co${i}').value)">Apply</button></td></tr>`).join('');
+   <td><button onclick="cmd('chan ${i+1} count '+$('cc${i}').value+'\\nchan ${i+1} type '+$('ct${i}').value+'\\nchan ${i+1} order '+$('co${i}').value)">Apply</button></td></tr>`).join('');
   $('problems').textContent=S.problems;
   if(rebuild||!$('secs').children.length)buildTable();
 }
@@ -237,8 +238,13 @@ static void handleState() {
   j += buf;
   j += ",\"channels\":[";
   for (int c = 0; c < NUM_CHANNELS; c++) {
-    snprintf(buf, sizeof(buf), "%s{\"pin\":%d,\"count\":%u,\"order\":\"%s\"}", c ? "," : "",
-             LED_PINS[c], g_chan[c].count, orderName(g_chan[c].order));
+    snprintf(buf, sizeof(buf), "%s{\"pin\":%d,\"count\":%u,\"order\":\"%s\",\"type\":\"%s\"}", c ? "," : "",
+             LED_PINS[c], g_chan[c].count, orderName(g_chan[c].order), ledTypeName(g_chan[c].type));
+    j += buf;
+  }
+  j += "],\"types\":[";
+  for (int t = 0; t < LED_TYPE_COUNT; t++) {
+    snprintf(buf, sizeof(buf), "%s{\"name\":\"%s\",\"order\":\"%s\"}", t ? "," : "", ledTypeName(t), orderName(ledTypeOrder(t)));
     j += buf;
   }
   j += "],\"sections\":[";

@@ -27,10 +27,13 @@ static const uint8_t LED_PINS[NUM_CHANNELS] = { 16, 12, 4, 2 };
 // Most separate LED runs one section can be made of.
 #define MAX_RUNS_PER_SECTION 16     // largest default section (Roof) has 14 runs
 
-// Default LED count and color order per channel (both changeable at runtime).
+// Default LED count, color order and LED type per channel (all changeable at
+// runtime: "chan 1 count 175", "chan 1 order GRB", "chan 1 type ws2812b").
+// Types: LED_WS2811, LED_WS2812B (also WS2813/WS2815/SK6812), LED_WS2811_400K.
 // Counts are from the string routing (layout/routing): panels 1, 2, 3; output 4 unused.
 static const uint16_t   DEFAULT_CHANNEL_LEDS[NUM_CHANNELS]  = { 175, 331, 291, 0 };
 static const ColorOrder DEFAULT_CHANNEL_ORDER[NUM_CHANNELS] = { ORDER_RGB, ORDER_RGB, ORDER_RGB, ORDER_RGB };
+static const LedType    DEFAULT_CHANNEL_TYPE[NUM_CHANNELS]  = { LED_WS2811, LED_WS2811, LED_WS2811, LED_WS2811 };
 
 // Relay that switches LED power. Set RELAY_PIN to -1 if your board has none.
 // If the strips get no power, flip RELAY_ACTIVE_LOW.

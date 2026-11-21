@@ -40,6 +40,19 @@ int parseOrder(const String& s) {
   return -1;
 }
 
+static const char* kTypeNames[LED_TYPE_COUNT] = { "WS2811", "WS2812B", "WS2811-400K" };
+static const uint8_t kTypeOrder[LED_TYPE_COUNT] = { ORDER_RGB, ORDER_GRB, ORDER_RGB };
+const char* ledTypeName(uint8_t t) { return t < LED_TYPE_COUNT ? kTypeNames[t] : "?"; }
+uint8_t ledTypeOrder(uint8_t t) { return t < LED_TYPE_COUNT ? kTypeOrder[t] : (uint8_t)ORDER_RGB; }
+int parseLedType(const String& s) {
+  String u;   // upper case, letters and digits only: "ws2812b", "WS2811-400k", "400k" all work
+  for (size_t i = 0; i < s.length(); i++) if (isalnum((unsigned char)s[i])) u += (char)toupper((unsigned char)s[i]);
+  if (u == "WS2811" || u == "WS2811800K" || u == "800K") return LED_WS2811;
+  if (u == "WS2812" || u == "WS2812B" || u == "WS2813" || u == "WS2815" || u == "SK6812") return LED_WS2812B;
+  if (u == "WS2811400K" || u == "400K" || u == "WS2811SLOW") return LED_WS2811_400K;
+  return -1;
+}
+
 // ---------------------------------------------------------------- runs
 
 uint16_t runLength(const Run& r) { return (r.first <= r.last ? r.last - r.first : r.first - r.last) + 1; }
@@ -237,7 +250,7 @@ static void defaultLayout() {
   for (int c = 0; c < NUM_CHANNELS; c++) {
     g_chan[c].count = DEFAULT_CHANNEL_LEDS[c] > MAX_LEDS_PER_CHANNEL ? MAX_LEDS_PER_CHANNEL : DEFAULT_CHANNEL_LEDS[c];
     g_chan[c].order = DEFAULT_CHANNEL_ORDER[c];
-    g_chan[c].pad = 0;
+    g_chan[c].type  = DEFAULT_CHANNEL_TYPE[c];
   }
   memset(g_sect, 0, sizeof(SectionCfg) * NUM_SECTIONS);
   for (int i = 0; i < NUM_SECTIONS; i++) {
@@ -301,6 +314,7 @@ void loadConfig() {
   for (int c = 0; c < NUM_CHANNELS; c++) {
     if (g_chan[c].count > MAX_LEDS_PER_CHANNEL) g_chan[c].count = MAX_LEDS_PER_CHANNEL;
     if (g_chan[c].order >= ORDER_COUNT) g_chan[c].order = ORDER_RGB;
+    if (g_chan[c].type >= LED_TYPE_COUNT) g_chan[c].type = LED_WS2811;
   }
   for (int i = 0; i < NUM_SECTIONS; i++) {
     SectionCfg& s = g_sect[i];

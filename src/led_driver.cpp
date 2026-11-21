@@ -18,6 +18,8 @@ static const uint8_t kMaxCh = 4;
 
 static uint8_t  s_numCh = 0;
 static uint8_t  s_pins[kMaxCh];
+static uint8_t  s_type[kMaxCh];       // timing the hardware is set up for
+static uint8_t  s_wantType[kMaxCh];   // timing asked for; applied at the start of show()
 static uint16_t s_count[kMaxCh];
 static bool     s_ok[kMaxCh];
 static bool     s_attached[kMaxCh];
@@ -34,9 +36,19 @@ static const uint8_t kOrderMap[ORDER_COUNT][3] = {
   {2, 1, 0},  // BGR
 };
 
+// Bit timings in nanoseconds, high then low, per LedType. Same values NeoPixelBus
+// (and so WLED) uses for these chips.
+struct BitTiming { uint16_t t0h, t0l, t1h, t1l; };
+static const BitTiming kTiming[LED_TYPE_COUNT] = {
+  { 300,  950,  900,  350 },   // WS2811 800 kHz    (1.25 us bit)
+  { 400,  850,  800,  450 },   // WS2812B and kin   (1.25 us bit)
+  { 800, 1700, 1600,  900 },   // WS2811 400 kHz    (2.5 us bit)
+};
+
 #if ESP_IDF_VERSION_MAJOR >= 5
 // ---------------------------------------------------------------- ESP-IDF 5
-// 10 MHz resolution: 1 tick = 100 ns. Bit period 1.2 us (~830 kHz).
+// 20 MHz resolution: 1 tick = 50 ns, so every timing above is a whole number of ticks.
+static const uint32_t kTickNs = 50;
 static rmt_channel_handle_t s_rmt[kMaxCh];
 static rmt_encoder_handle_t s_enc[kMaxCh];
 
@@ -45,7 +57,7 @@ static bool createChannel(uint8_t ch) {
   memset(&cfg, 0, sizeof(cfg));
   cfg.gpio_num          = (gpio_num_t)s_pins[ch];
   cfg.clk_src           = RMT_CLK_SRC_DEFAULT;
-  cfg.resolution_hz     = 10000000;
+  cfg.resolution_hz     = 1000000000UL / kTickNs;
   cfg.mem_block_symbols = 128;   // 2 blocks per channel: fewer glitches when Wi-Fi is busy
   cfg.trans_queue_depth = 2;
   if (rmt_new_tx_channel(&cfg, &s_rmt[ch]) != ESP_OK) {
@@ -56,16 +68,29 @@ static bool createChannel(uint8_t ch) {
   return true;
 }
 
-static bool hwInit(uint8_t ch) {
+static bool makeEncoder(uint8_t ch, uint8_t type) {
+  const BitTiming& t = kTiming[type];
   rmt_bytes_encoder_config_t ec;
   memset(&ec, 0, sizeof(ec));
-  ec.bit0.level0 = 1; ec.bit0.duration0 = 3;  // 0: 300 ns high
-  ec.bit0.level1 = 0; ec.bit0.duration1 = 9;  //    900 ns low
-  ec.bit1.level0 = 1; ec.bit1.duration0 = 9;  // 1: 900 ns high
-  ec.bit1.level1 = 0; ec.bit1.duration1 = 3;  //    300 ns low
+  ec.bit0.level0 = 1; ec.bit0.duration0 = t.t0h / kTickNs;
+  ec.bit0.level1 = 0; ec.bit0.duration1 = t.t0l / kTickNs;
+  ec.bit1.level0 = 1; ec.bit1.duration0 = t.t1h / kTickNs;
+  ec.bit1.level1 = 0; ec.bit1.duration1 = t.t1l / kTickNs;
   ec.flags.msb_first = 1;
-  if (rmt_new_bytes_encoder(&ec, &s_enc[ch]) != ESP_OK) return false;
+  return rmt_new_bytes_encoder(&ec, &s_enc[ch]) == ESP_OK;
+}
+
+static bool hwInit(uint8_t ch) {
+  if (!makeEncoder(ch, s_type[ch])) { s_enc[ch] = NULL; return false; }
   return createChannel(ch);
+}
+
+// Only called between frames, when the channel is idle.
+static bool hwSetType(uint8_t ch, uint8_t type) {
+  rmt_encoder_handle_t old = s_enc[ch];
+  if (!makeEncoder(ch, type)) { s_enc[ch] = old; return false; }   // keep the old timing
+  if (old) rmt_del_encoder(old);
+  return true;
 }
 
 static void hwStart(uint8_t ch, const uint8_t* data, size_t len) {
@@ -90,20 +115,18 @@ static bool hwAttach(uint8_t ch) { return s_rmt[ch] ? true : createChannel(ch); 
 
 #else
 // ---------------------------------------------------------------- ESP-IDF 4.4
-// APB 80 MHz / 2 = 40 MHz: 1 tick = 25 ns. Bit period 1.25 us (800 kHz).
+// APB 80 MHz / 2 = 40 MHz: 1 tick = 25 ns.
 // Channels 0,2,4,6 so each can use two RMT memory blocks.
 static const rmt_channel_t kRmtCh[kMaxCh] = { RMT_CHANNEL_0, RMT_CHANNEL_2, RMT_CHANNEL_4, RMT_CHANNEL_6 };
-#define T0H 14   // 350 ns
-#define T0L 36   // 900 ns
-#define T1H 36   // 900 ns
-#define T1L 14   // 350 ns
+static const uint32_t kTickNs = 25;
+static rmt_item32_t s_bit0[kMaxCh], s_bit1[kMaxCh];   // read by the translator
 
+// The translator gets no channel argument, so there is one copy per channel.
+template <int CH>
 static void IRAM_ATTR rmtAdapter(const void* src, rmt_item32_t* dest, size_t src_size,
                                  size_t wanted_num, size_t* translated_size, size_t* item_num) {
   if (src == NULL || dest == NULL) { *translated_size = 0; *item_num = 0; return; }
-  rmt_item32_t bit0, bit1;
-  bit0.level0 = 1; bit0.duration0 = T0H; bit0.level1 = 0; bit0.duration1 = T0L;
-  bit1.level0 = 1; bit1.duration0 = T1H; bit1.level1 = 0; bit1.duration1 = T1L;
+  const rmt_item32_t bit0 = s_bit0[CH], bit1 = s_bit1[CH];
   size_t size = 0, num = 0;
   const uint8_t* psrc = (const uint8_t*)src;
   rmt_item32_t* pdest = dest;
@@ -119,7 +142,20 @@ static void IRAM_ATTR rmtAdapter(const void* src, rmt_item32_t* dest, size_t src
   *item_num = num;
 }
 
+static const sample_to_rmt_t kAdapters[kMaxCh] = { rmtAdapter<0>, rmtAdapter<1>, rmtAdapter<2>, rmtAdapter<3> };
+
+// Only called between frames, when the channel is idle.
+static bool hwSetType(uint8_t ch, uint8_t type) {
+  const BitTiming& t = kTiming[type];
+  s_bit0[ch].level0 = 1; s_bit0[ch].duration0 = t.t0h / kTickNs;
+  s_bit0[ch].level1 = 0; s_bit0[ch].duration1 = t.t0l / kTickNs;
+  s_bit1[ch].level0 = 1; s_bit1[ch].duration0 = t.t1h / kTickNs;
+  s_bit1[ch].level1 = 0; s_bit1[ch].duration1 = t.t1l / kTickNs;
+  return true;
+}
+
 static bool hwInit(uint8_t ch) {
+  hwSetType(ch, s_type[ch]);
   rmt_config_t c = RMT_DEFAULT_CONFIG_TX((gpio_num_t)s_pins[ch], kRmtCh[ch]);
   c.clk_div = 2;
   c.mem_block_num = 2;
@@ -127,7 +163,7 @@ static bool hwInit(uint8_t ch) {
   c.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
   if (rmt_config(&c) != ESP_OK) return false;
   if (rmt_driver_install(c.channel, 0, 0) != ESP_OK) return false;
-  if (rmt_translator_init(c.channel, rmtAdapter) != ESP_OK) return false;
+  if (rmt_translator_init(c.channel, kAdapters[ch]) != ESP_OK) return false;
   return true;
 }
 
@@ -156,6 +192,7 @@ bool begin(const uint8_t* pins, uint8_t numChannels) {
   bool all = true;
   for (uint8_t ch = 0; ch < s_numCh; ch++) {
     s_pins[ch] = pins[ch];
+    s_type[ch] = s_wantType[ch];   // LED_WS2811 unless setType() was called first
     s_count[ch] = 0;
     memset(s_render[ch], 0, sizeof(s_render[ch]));
     memset(s_out[ch], 0, sizeof(s_out[ch]));
@@ -173,6 +210,10 @@ void setCount(uint8_t ch, uint16_t count) {
   s_count[ch] = count;
 }
 
+void setType(uint8_t ch, uint8_t type) {
+  if (ch < kMaxCh) s_wantType[ch] = type < LED_TYPE_COUNT ? type : (uint8_t)LED_WS2811;
+}
+
 uint16_t count(uint8_t ch) { return ch < s_numCh ? s_count[ch] : 0; }
 uint8_t* buffer(uint8_t ch) { return ch < s_numCh ? s_render[ch] : NULL; }
 bool     attached(uint8_t ch) { return ch < s_numCh && s_attached[ch]; }
@@ -180,6 +221,9 @@ bool     ok(uint8_t ch) { return ch < s_numCh && s_ok[ch]; }
 
 void show(uint8_t brightness, const uint8_t* colorOrders) {
   uint16_t scale = (uint16_t)brightness + 1;
+  // Every channel finished at the end of the last show(), so timing can change now.
+  for (uint8_t ch = 0; ch < s_numCh; ch++)
+    if (s_ok[ch] && s_wantType[ch] != s_type[ch] && hwSetType(ch, s_wantType[ch])) s_type[ch] = s_wantType[ch];
   for (uint8_t ch = 0; ch < s_numCh; ch++) {
     if (!s_ok[ch] || !s_attached[ch] || s_count[ch] == 0) continue;
     uint8_t ord = colorOrders[ch] < ORDER_COUNT ? colorOrders[ch] : (uint8_t)ORDER_RGB;

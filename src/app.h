@@ -32,7 +32,7 @@ struct SectionCfg {
 struct ChannelCfg {
   uint16_t count;
   uint8_t  order;
-  uint8_t  pad;
+  uint8_t  type;    // LedType (was padding, so older saved settings read as WS2811)
 };
 
 struct Settings {
@@ -113,6 +113,9 @@ int         validate(Print& out, bool verbose);                    // returns er
 bool        testUsesChannel(uint8_t ch);
 const char* orderName(uint8_t o);
 int         parseOrder(const String& s);
+const char* ledTypeName(uint8_t t);
+int         parseLedType(const String& s);                         // -1 unknown
+uint8_t     ledTypeOrder(uint8_t t);                               // usual ColorOrder for the type
 const char* roleName(Role r);
 
 // console.cpp

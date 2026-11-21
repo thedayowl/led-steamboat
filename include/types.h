@@ -16,6 +16,15 @@ enum ColorOrder : uint8_t {
   ORDER_RGB = 0, ORDER_RBG, ORDER_GRB, ORDER_GBR, ORDER_BRG, ORDER_BGR, ORDER_COUNT
 };
 
+// LED chip on a channel: sets the data timing. Changing it at runtime also
+// sets that chip's usual color order ("chan 1 type ws2812b").
+enum LedType : uint8_t {
+  LED_WS2811 = 0,      // WS2811 at 800 kHz (12 V bullet-node strings)
+  LED_WS2812B,         // WS2812/WS2812B, also WS2813, WS2815, SK6812 (RGB)
+  LED_WS2811_400K,     // WS2811 wired for 400 kHz "slow" mode (older strings)
+  LED_TYPE_COUNT
+};
+
 // One entry in the default section table (config.h)
 struct SectionDef {
   const char* name;   // shown in console / web page; must be unique
