@@ -14,14 +14,19 @@
 //   Function button GPIO17, spare GPIO13
 // ============================================================================
 
-#define NUM_CHANNELS 4
+// Channel count and GPIOs below are first-boot defaults. They can be changed at
+// runtime ("channels 6", "chan 5 pin 13", or the web page), then save + restart.
+#define MAX_CHANNELS     8      // ESP32 RMT has 8 transmit channels
+#define DEFAULT_CHANNELS 4
 
 // GPIO for each output channel. Channel 1 is the first entry.
-// Change these to match your board. Any ESP32 output-capable GPIO works.
-// GPIO1 also works, but it is the serial TX pin; see README "GPIO1 note".
-static const uint8_t LED_PINS[NUM_CHANNELS] = { 16, 12, 4, 2 };
+// Any ESP32 output-capable GPIO works (not 6-11, which are the flash, or
+// 34-39, which are input only). GPIO1 also works, but it is the serial TX
+// pin; see README "GPIO1 note".
+static const int8_t DEFAULT_LED_PINS[DEFAULT_CHANNELS] = { 16, 12, 4, 2 };
 
-// Largest number of LEDs any one channel can be set to (RAM is reserved for this).
+// Largest number of LEDs any one channel can be set to (RAM is reserved for
+// this on every channel in use: 4.8 KB each).
 #define MAX_LEDS_PER_CHANNEL 800
 
 // Most separate LED runs one section can be made of.
@@ -31,25 +36,28 @@ static const uint8_t LED_PINS[NUM_CHANNELS] = { 16, 12, 4, 2 };
 // runtime: "chan 1 count 175", "chan 1 order GRB", "chan 1 type ws2812b").
 // Types: LED_WS2811, LED_WS2812B (also WS2813/WS2815/SK6812), LED_WS2811_400K.
 // Counts are from the string routing (layout/routing): panels 1, 2, 3; output 4 unused.
-static const uint16_t   DEFAULT_CHANNEL_LEDS[NUM_CHANNELS]  = { 175, 331, 291, 0 };
-static const ColorOrder DEFAULT_CHANNEL_ORDER[NUM_CHANNELS] = { ORDER_RGB, ORDER_RGB, ORDER_RGB, ORDER_RGB };
-static const LedType    DEFAULT_CHANNEL_TYPE[NUM_CHANNELS]  = { LED_WS2811, LED_WS2811, LED_WS2811, LED_WS2811 };
+// Channels added at runtime beyond these start with 0 LEDs, RGB, WS2811.
+static const uint16_t   DEFAULT_CHANNEL_LEDS[DEFAULT_CHANNELS]  = { 175, 331, 291, 0 };
+static const ColorOrder DEFAULT_CHANNEL_ORDER[DEFAULT_CHANNELS] = { ORDER_RGB, ORDER_RGB, ORDER_RGB, ORDER_RGB };
+static const LedType    DEFAULT_CHANNEL_TYPE[DEFAULT_CHANNELS]  = { LED_WS2811, LED_WS2811, LED_WS2811, LED_WS2811 };
 
-// Relay that switches LED power. Set RELAY_PIN to -1 if your board has none.
-// If the strips get no power, flip RELAY_ACTIVE_LOW.
-#define RELAY_PIN        18
-#define RELAY_ACTIVE_LOW true
+// Relay that switches LED power. -1 if your board has none. If the strips get
+// no power, flip the active-low setting. First-boot default; changeable at
+// runtime ("relay pin 18", "relay low on", or pick a board with "preset").
+#define DEFAULT_RELAY_PIN        18
+#define DEFAULT_RELAY_ACTIVE_LOW true
 
 // Function button: short press = display on/off, hold 5 s = start the setup
-// Wi-Fi access point. Set to -1 to disable.
-#define BUTTON_PIN       17
+// Wi-Fi access point. -1 = none. Changeable at runtime ("button pin 17").
+#define DEFAULT_BUTTON_PIN       17
 
 // Photoresistor (LDR) for automatic daytime off. Use an ADC1 pin (32-39) so it
 // works with Wi-Fi on. Wiring: 3.3V -> LDR -> GPIO33 -> 10k resistor -> GND
 // (more light = higher reading). If you wire the LDR to GND and the resistor to
-// 3.3V instead, set LIGHT_SENSOR_INVERT true. Set the pin to -1 if not fitted.
-#define LIGHT_SENSOR_PIN     33
-#define LIGHT_SENSOR_INVERT  false
+// 3.3V instead, set the sensor to inverted. -1 = not fitted. First-boot
+// defaults; changeable at runtime ("sensor pin 34", "sensor invert on").
+#define DEFAULT_SENSOR_PIN     33
+#define DEFAULT_SENSOR_INVERT  false
 // Defaults (changeable at runtime with the "sensor" command or web page):
 #define DEFAULT_AUTO_DARK    false   // turn on with "sensor on" after checking the readings
 #define DEFAULT_DARK_LEVEL   20      // % light: display turns ON when it gets darker than this

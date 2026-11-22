@@ -66,7 +66,18 @@ Mark with the cursor: <b>Start</b> begins the section over at the cursor, <b>Add
 <table><thead><tr><th>#</th><th>Section</th><th>Anim</th><th>Runs</th><th>LEDs</th><th>Color</th><th>Rev</th><th></th></tr></thead><tbody id="secs"></tbody></table>
 <pre id="problems" style="height:auto;max-height:160px;color:#fc6"></pre>
 </section>
-<section><h2>Channels</h2><table><thead><tr><th>Ch</th><th>GPIO</th><th>LEDs</th><th>LED type</th><th>Color order</th><th></th></tr></thead><tbody id="chans"></tbody></table></section>
+<section><h2>Board, channels and pins</h2>
+<div class="row">Board <select id="preset"></select><button onclick="usePreset()">Use these pins</button><span id="presetPins" class="muted"></span></div>
+<div class="row">Channels <select id="numCh"></select>
+&nbsp;Relay <select id="relayPin"></select><label><input type="checkbox" id="relayLow"> active low</label>
+&nbsp;Button <select id="buttonPin"></select>
+&nbsp;Light sensor <select id="sensorPin"></select><label><input type="checkbox" id="sensorInv"> inverted</label>
+<button onclick="applyHw()">Apply</button></div>
+<table><thead><tr><th>Ch</th><th>GPIO</th><th>LEDs</th><th>LED type</th><th>Color order</th><th></th></tr></thead><tbody id="chans"></tbody></table>
+<div id="hwNote" class="row"></div>
+<div class="muted">GPIO, channel count, relay, button and sensor changes take effect after saving and restarting. LED counts, types and color orders apply at once.
+Check a board preset against your board's pin list. GPIO1 and GPIO3 are the serial port: using them for LEDs mutes or disables the serial console.</div>
+</section>
 <section><h2>Show</h2>
 <div class="slider"><label>Brightness</label><input type="range" id="bright" min="0" max="255" onchange="cmd('bright '+this.value)"><span id="brightv"></span></div>
 <div class="slider"><label>Water speed %</label><input type="range" id="waterSpeed" min="0" max="400" onchange="cmd('speed water '+this.value)"><span id="waterSpeedv"></span></div>
@@ -145,7 +156,7 @@ async function cmd(c,keepTable){
   const t=await r.text(); const log=$('log');
   log.textContent+='> '+c.split('\n').map(l=>/^(wifi|ap|admin) pass/.test(l)?l.replace(/pass .*/,'pass ****'):l).join(' ; ')+'\n'+t; log.scrollTop=log.scrollHeight;
   const lines=t.trim().split('\n'); const cur=lines.filter(l=>/^ch\d+ LED/.test(l)).pop(); if(cur)$('cursor').textContent=cur;
-  if(/^(set|add|clear|ms|ma|me|color|rev|defaults|reload|chan)\b/.test(c)||c.includes('\n'))keepTable=false; else if(keepTable===undefined)keepTable=true;
+  if(/^(set|add|clear|ms|ma|me|color|rev|defaults|reload|chan|channels|preset|pins)\b/.test(c)||c.includes('\n'))keepTable=false; else if(keepTable===undefined)keepTable=true;
   await load(!keepTable);
   return t;
 }
@@ -162,12 +173,14 @@ async function load(rebuild,lite){
   for(const k of ['bright','waterSpeed','smokeSpeed','wheelSpeed','floor','fade','darkLevel','dayLevel']){$(k).value=S[k];$(k+'v').textContent=S[k];}
   $('wheelRev').textContent=S.wheelRev?'reversed':'normal'; $('bg').checked=!!S.bg;
   for(const k of ['staSsid','apSsid'])if(document.activeElement!=$(k))$(k).value=S[k];
-  if($('ch').options.length!=S.channels.length){$('ch').innerHTML=S.channels.map((c,i)=>`<option value="${i+1}">${i+1} (GPIO${c.pin})</option>`).join('');}
+  const live=S.channels.slice(0,S.hw.numRun),chKey=live.map(c=>c.run).join();
+  if($('ch').dataset.k!=chKey){$('ch').dataset.k=chKey;$('ch').innerHTML=live.map((c,i)=>`<option value="${i+1}">${i+1} (${c.run>=0?'GPIO'+c.run:'off'})</option>`).join('');}
+  showHw();
   if(document.activeElement!=$('ch'))$('ch').value=S.test.ch; if(document.activeElement!=$('led'))$('led').value=S.test.led;
-  $('chans').innerHTML=S.channels.map((c,i)=>`<tr><td>${i+1}</td><td>${c.pin}</td><td><input type=number id="cc${i}" value="${c.count}" min=0 max=${S.maxLeds}></td>
+  $('chans').innerHTML=S.channels.map((c,i)=>`<tr><td>${i+1}</td><td><select id="cp${i}">${pinOpts(S.hw.outPins,c.pin)}</select>${c.pin!=c.run?' <span class=dirty title="after restart">*</span>':''}</td><td><input type=number id="cc${i}" value="${c.count}" min=0 max=${S.maxLeds}></td>
    <td><select id="ct${i}" onchange="$('co${i}').value=S.types[this.selectedIndex].order">${S.types.map(t=>`<option${t.name==c.type?' selected':''}>${t.name}</option>`).join('')}</select></td>
    <td><select id="co${i}">${['RGB','RBG','GRB','GBR','BRG','BGR'].map(o=>`<option${o==c.order?' selected':''}>${o}</option>`).join('')}</select></td>
-   <td><button onclick="cmd('chan ${i+1} count '+$('cc${i}').value+'\\nchan ${i+1} type '+$('ct${i}').value+'\\nchan ${i+1} order '+$('co${i}').value)">Apply</button></td></tr>`).join('');
+   <td><button onclick="applyChan(${i})">Apply</button></td></tr>`).join('');
   $('problems').textContent=S.problems;
   if(rebuild||!$('secs').children.length)buildTable();
 }
@@ -182,6 +195,30 @@ function buildTable(){
    <button onclick="cmd('ms ${n}')">Start</button><button onclick="cmd('ma ${n}')">Add run</button><button onclick="cmd('me ${n}')">End</button></td></tr>`}).join('');
 }
 function ed(n){$('r'+n).className='edited'}
+function pinOpts(list,sel){return `<option value="-1"${sel<0?' selected':''}>none</option>`+list.map(p=>`<option value="${p}"${p==sel?' selected':''}>GPIO${p}</option>`).join('')}
+function showHw(){
+  const h=S.hw,f=id=>document.activeElement==$(id);
+  if(!f('preset')){$('preset').innerHTML='<option value="">(custom pins)</option>'+S.presets.map(p=>`<option value="${p.name}"${p.cur?' selected':''}>${esc(p.title)}</option>`).join('');showPreset();}
+  if(!f('numCh'))$('numCh').innerHTML=[...Array(h.maxCh).keys()].map(i=>`<option${i+1==h.numCh?' selected':''}>${i+1}</option>`).join('');
+  if(!f('relayPin'))$('relayPin').innerHTML=pinOpts(h.outPins,h.relay);
+  if(!f('buttonPin'))$('buttonPin').innerHTML=pinOpts(h.inPins,h.button);
+  if(!f('sensorPin'))$('sensorPin').innerHTML=pinOpts(h.adcPins,h.sensor);
+  $('relayLow').checked=!!h.relayLow; $('sensorInv').checked=!!h.sensorInv;
+  $('hwNote').innerHTML=h.pending?'<span class="dirty">Pin changes take effect after a restart.</span><button class="warn" onclick="saveRestart()">Save and restart</button>':'';
+}
+function showPreset(){const p=S.presets.find(p=>p.name==$('preset').value);$('presetPins').textContent=p?p.pins:''}
+document.addEventListener('change',e=>{if(e.target.id=='preset')showPreset()});
+function usePreset(){const n=$('preset').value;if(!n){alert('Choose a board first');return}cmd('preset '+n)}
+function applyHw(){cmd(['channels '+$('numCh').value,'relay pin '+$('relayPin').value,'relay low '+($('relayLow').checked?'on':'off'),
+  'button pin '+$('buttonPin').value,'sensor pin '+$('sensorPin').value,'sensor invert '+($('sensorInv').checked?'on':'off')].join('\n'))}
+function applyChan(i){const c=S.channels[i],n=i+1,L=[];
+  if($('cp'+i).value!=c.pin)L.push(`chan ${n} pin ${$('cp'+i).value}`);
+  L.push(`chan ${n} count ${$('cc'+i).value}`,`chan ${n} type ${$('ct'+i).value}`,`chan ${n} order ${$('co'+i).value}`);cmd(L.join('\n'))}
+async function saveRestart(){
+  if(!confirm('Save all settings and restart the controller now?'))return;
+  try{await fetch('/api/cmd',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'c='+encodeURIComponent('save\nreboot')})}catch(e){}
+  $('hwNote').textContent='Restarting...'; setTimeout(()=>location.reload(),15000);
+}
 function apply(n){const s=S.sections[n-1];const l=$('l'+n).value.trim();
   let c=(l?`set ${n} ${l}`:`clear ${n}`)+`\ncolor ${n} ${$('k'+n).value.slice(1)}`;
   c+=`\nrev ${n} ${$('v'+n).checked?'on':'off'}`; cmd(c,false)}
@@ -278,10 +315,46 @@ static void handleState() {
   snprintf(buf, sizeof(buf), ",\"test\":{\"mode\":%d,\"ch\":%d,\"led\":%u,\"sec\":%d}",
            g_test.mode, g_test.ch + 1, g_test.a, g_test.section + 1);
   j += buf;
-  j += ",\"channels\":[";
-  for (int c = 0; c < NUM_CHANNELS; c++) {
-    snprintf(buf, sizeof(buf), "%s{\"pin\":%d,\"count\":%u,\"order\":\"%s\",\"type\":\"%s\"}", c ? "," : "",
-             LED_PINS[c], g_chan[c].count, orderName(g_chan[c].order), ledTypeName(g_chan[c].type));
+  // Pins: what is saved (g_hw) and what is running ("run", -1 = off or not started)
+  snprintf(buf, sizeof(buf), ",\"hw\":{\"numCh\":%u,\"numRun\":%u,\"maxCh\":%d,\"relay\":%d,\"relayLow\":%u,\"button\":%d,"
+           "\"sensor\":%d,\"sensorInv\":%u,\"pending\":%d",
+           g_hw.numCh, numChannels(), MAX_CHANNELS, g_hw.relayPin, g_hw.relayActiveLow, g_hw.buttonPin,
+           g_hw.sensorPin, g_hw.sensorInvert, hwPending() ? 1 : 0);
+  j += buf;
+  const char* lists[3] = { ",\"outPins\":[", "],\"inPins\":[", "],\"adcPins\":[" };
+  for (int l = 0; l < 3; l++) {
+    j += lists[l];
+    bool first = true;
+    for (int p = 0; p < 40; p++) {
+      if (!(l == 0 ? ledPinOk(p) : l == 1 ? inputPinOk(p) : sensorPinOk(p))) continue;
+      if (!first) j += ',';
+      j += String(p);
+      first = false;
+    }
+  }
+  j += "]},\"presets\":[";
+  int cur = hwCurrentPreset();
+  for (int i = 0; i < hwPresetCount(); i++) {
+    snprintf(buf, sizeof(buf), "%s{\"name\":\"%s\",\"title\":\"", i ? "," : "", hwPresetName(i));
+    j += buf;
+    j += jsonEscape(String(hwPresetTitle(i)));
+    StringOut pins;
+    HwCfg h = g_hw;
+    hwApplyPreset(i, h);
+    pins.print("LEDs");
+    for (int c = 0; c < h.numCh; c++) pins.printf(" %d", h.ledPin[c]);
+    pins.print(", relay ");
+    if (h.relayPin >= 0) pins.printf("%d%s", h.relayPin, h.relayActiveLow ? " (active low)" : ""); else pins.print("none");
+    pins.print(", button ");
+    if (h.buttonPin >= 0) pins.printf("%d", h.buttonPin); else pins.print("none");
+    if (hwPresetNote(i)[0]) pins.printf(" (%s)", hwPresetNote(i));
+    j += "\",\"pins\":\"" + jsonEscape(pins.s) + "\"";
+    j += i == cur ? ",\"cur\":1}" : "}";
+  }
+  j += "],\"channels\":[";
+  for (int c = 0; c < g_hw.numCh; c++) {
+    snprintf(buf, sizeof(buf), "%s{\"pin\":%d,\"run\":%d,\"count\":%u,\"order\":\"%s\",\"type\":\"%s\"}", c ? "," : "",
+             g_hw.ledPin[c], Leds::pin(c), g_chan[c].count, orderName(g_chan[c].order), ledTypeName(g_chan[c].type));
     j += buf;
   }
   j += "],\"types\":[";
@@ -393,12 +466,6 @@ static bool   s_otaAuthed = false;
 static bool   s_otaMine = false;   // this upload started Update (so it may end or abort it)
 static String s_otaError;
 
-static void otaBlankLeds() {
-  uint8_t orders[NUM_CHANNELS];
-  for (int c = 0; c < NUM_CHANNELS; c++) { orders[c] = g_chan[c].order; memset(Leds::buffer(c), 0, g_chan[c].count * 3); }
-  Leds::show(0, orders);
-}
-
 static void handleUpdateChunk() {
   HTTPUpload& up = s_server.upload();
   if (up.status == UPLOAD_FILE_START) {
@@ -408,7 +475,7 @@ static void handleUpdateChunk() {
     if (!s_otaAuthed) return;
     // Never touch an update that is already running (e.g. a GitHub download).
     if (ghBusy() || Update.isRunning()) { s_otaError = "Another firmware update is in progress."; return; }
-    otaBlankLeds();
+    ledsBlank();
     s_otaMine = Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH);
     if (!s_otaMine) s_otaError = String("Could not start update: ") + Update.errorString();
   } else if (up.status == UPLOAD_FILE_WRITE) {

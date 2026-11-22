@@ -14,17 +14,18 @@
 
 namespace Leds {
 
-static const uint8_t kMaxCh = 4;
+static const uint8_t kMaxCh = MAX_CHANNELS;
 
 static uint8_t  s_numCh = 0;
-static uint8_t  s_pins[kMaxCh];
+static int8_t   s_pins[kMaxCh];
 static uint8_t  s_type[kMaxCh];       // timing the hardware is set up for
 static uint8_t  s_wantType[kMaxCh];   // timing asked for; applied at the start of show()
 static uint16_t s_count[kMaxCh];
 static bool     s_ok[kMaxCh];
 static bool     s_attached[kMaxCh];
-static uint8_t  s_render[kMaxCh][MAX_LEDS_PER_CHANNEL * 3];  // what effects draw into
-static uint8_t  s_out[kMaxCh][MAX_LEDS_PER_CHANNEL * 3];     // what goes on the wire
+static const size_t kBufBytes = MAX_LEDS_PER_CHANNEL * 3;
+static uint8_t* s_render[kMaxCh];     // what effects draw into (kBufBytes each, on the heap)
+static uint8_t* s_out[kMaxCh];        // what goes on the wire
 
 // Byte positions of R,G,B in the wire order for each ColorOrder
 static const uint8_t kOrderMap[ORDER_COUNT][3] = {
@@ -58,7 +59,9 @@ static bool createChannel(uint8_t ch) {
   cfg.gpio_num          = (gpio_num_t)s_pins[ch];
   cfg.clk_src           = RMT_CLK_SRC_DEFAULT;
   cfg.resolution_hz     = 1000000000UL / kTickNs;
-  cfg.mem_block_symbols = 128;   // 2 blocks per channel: fewer glitches when Wi-Fi is busy
+  // 2 blocks per channel when there are 4 or fewer (fewer glitches when Wi-Fi
+  // is busy); the ESP32 has 8 blocks in all, so more channels get 1 each.
+  cfg.mem_block_symbols = s_numCh <= 4 ? 128 : 64;
   cfg.trans_queue_depth = 2;
   if (rmt_new_tx_channel(&cfg, &s_rmt[ch]) != ESP_OK) {
     cfg.mem_block_symbols = 64;
@@ -116,8 +119,9 @@ static bool hwAttach(uint8_t ch) { return s_rmt[ch] ? true : createChannel(ch); 
 #else
 // ---------------------------------------------------------------- ESP-IDF 4.4
 // APB 80 MHz / 2 = 40 MHz: 1 tick = 25 ns.
-// Channels 0,2,4,6 so each can use two RMT memory blocks.
-static const rmt_channel_t kRmtCh[kMaxCh] = { RMT_CHANNEL_0, RMT_CHANNEL_2, RMT_CHANNEL_4, RMT_CHANNEL_6 };
+// Up to 4 outputs use RMT channels 0,2,4,6 so each gets two memory blocks;
+// more outputs use channels 0-7 with one block each.
+static rmt_channel_t rmtCh(uint8_t ch) { return (rmt_channel_t)(s_numCh <= 4 ? ch * 2 : ch); }
 static const uint32_t kTickNs = 25;
 static rmt_item32_t s_bit0[kMaxCh], s_bit1[kMaxCh];   // read by the translator
 
@@ -142,7 +146,8 @@ static void IRAM_ATTR rmtAdapter(const void* src, rmt_item32_t* dest, size_t src
   *item_num = num;
 }
 
-static const sample_to_rmt_t kAdapters[kMaxCh] = { rmtAdapter<0>, rmtAdapter<1>, rmtAdapter<2>, rmtAdapter<3> };
+static const sample_to_rmt_t kAdapters[8] = { rmtAdapter<0>, rmtAdapter<1>, rmtAdapter<2>, rmtAdapter<3>,
+                                              rmtAdapter<4>, rmtAdapter<5>, rmtAdapter<6>, rmtAdapter<7> };
 
 // Only called between frames, when the channel is idle.
 static bool hwSetType(uint8_t ch, uint8_t type) {
@@ -156,9 +161,9 @@ static bool hwSetType(uint8_t ch, uint8_t type) {
 
 static bool hwInit(uint8_t ch) {
   hwSetType(ch, s_type[ch]);
-  rmt_config_t c = RMT_DEFAULT_CONFIG_TX((gpio_num_t)s_pins[ch], kRmtCh[ch]);
+  rmt_config_t c = RMT_DEFAULT_CONFIG_TX((gpio_num_t)s_pins[ch], rmtCh(ch));
   c.clk_div = 2;
-  c.mem_block_num = 2;
+  c.mem_block_num = s_numCh <= 4 ? 2 : 1;
   c.tx_config.idle_output_en = true;
   c.tx_config.idle_level = RMT_IDLE_LEVEL_LOW;
   if (rmt_config(&c) != ESP_OK) return false;
@@ -168,40 +173,47 @@ static bool hwInit(uint8_t ch) {
 }
 
 static void hwStart(uint8_t ch, const uint8_t* data, size_t len) {
-  rmt_write_sample(kRmtCh[ch], data, len, false);
+  rmt_write_sample(rmtCh(ch), data, len, false);
 }
 
-static void hwWait(uint8_t ch) { rmt_wait_tx_done(kRmtCh[ch], pdMS_TO_TICKS(100)); }
+static void hwWait(uint8_t ch) { rmt_wait_tx_done(rmtCh(ch), pdMS_TO_TICKS(100)); }
 
 static void hwRelease(uint8_t ch) {
   // The channel stays configured; whoever takes the pin re-routes the GPIO
   // matrix. We just stop transmitting (see show()).
-  rmt_wait_tx_done(kRmtCh[ch], pdMS_TO_TICKS(100));
+  rmt_wait_tx_done(rmtCh(ch), pdMS_TO_TICKS(100));
 }
 
 static bool hwAttach(uint8_t ch) {
-  return rmt_set_gpio(kRmtCh[ch], RMT_MODE_TX, (gpio_num_t)s_pins[ch], false) == ESP_OK;
+  return rmt_set_gpio(rmtCh(ch), RMT_MODE_TX, (gpio_num_t)s_pins[ch], false) == ESP_OK;
 }
 #endif
 
 // ---------------------------------------------------------------- common
 
-bool begin(const uint8_t* pins, uint8_t numChannels) {
+bool begin(const int8_t* pins, uint8_t numChannels) {
+  if (s_numCh) return false;   // once only
   if (numChannels > kMaxCh) numChannels = kMaxCh;
+  // One block for every channel's two buffers.
+  uint8_t* mem = numChannels ? (uint8_t*)calloc(numChannels, 2 * kBufBytes) : NULL;
+  if (!mem) return false;
   s_numCh = numChannels;
   bool all = true;
   for (uint8_t ch = 0; ch < s_numCh; ch++) {
+    s_render[ch] = mem + (2 * ch) * kBufBytes;
+    s_out[ch]    = mem + (2 * ch + 1) * kBufBytes;
     s_pins[ch] = pins[ch];
     s_type[ch] = s_wantType[ch];   // LED_WS2811 unless setType() was called first
     s_count[ch] = 0;
-    memset(s_render[ch], 0, sizeof(s_render[ch]));
-    memset(s_out[ch], 0, sizeof(s_out[ch]));
-    s_ok[ch] = hwInit(ch);
+    s_ok[ch] = s_pins[ch] >= 0 && hwInit(ch);
     s_attached[ch] = s_ok[ch];
-    if (!s_ok[ch]) all = false;
+    if (s_pins[ch] >= 0 && !s_ok[ch]) all = false;
   }
   return all;
 }
+
+uint8_t numChannels() { return s_numCh; }
+int8_t  pin(uint8_t ch) { return ch < s_numCh && s_ok[ch] ? s_pins[ch] : -1; }
 
 void setCount(uint8_t ch, uint16_t count) {
   if (ch >= s_numCh) return;

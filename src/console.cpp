@@ -86,7 +86,16 @@ Sections can be given by number (see 'list') or name ("roof", "puff2", "spoke07"
   chan <ch> count <n>  LEDs on a channel     chan <ch> order <RGB|GRB|BRG...>
   chan <ch> type <WS2811|WS2812B|WS2811-400K>  LED chip (sets its usual order)
   save                 write to flash        reload  discard unsaved changes
-  defaults             compiled-in show/section defaults (network unchanged)
+  defaults             compiled-in show/section defaults (network, pins unchanged)
+
+ Board and pins (take effect after 'save' and 'reboot')
+  pins                 channel count, GPIOs, relay, button, light sensor
+  preset               list WLED controller boards     preset <name>  use one
+  channels <1-8>       number of LED outputs
+  chan <ch> pin <gpio|none>     GPIO for a channel
+  relay pin <gpio|none>         relay low on|off   (on = active low)
+  button pin <gpio|none>        sensor pin <32-39|none>   sensor invert on|off
+  pins default         compiled-in pin settings from config.h
 
  Show settings
   bright <0-255>       speed <water|smoke|wheel> <percent>
@@ -185,9 +194,9 @@ static void deactivate(Print& out) {
 }
 
 void consoleBegin() {
-  for (int c = 0; c < NUM_CHANNELS; c++) {
-    if (LED_PINS[c] == SERIAL_TX_PIN) s_txCh = c;
-    if (LED_PINS[c] == SERIAL_RX_PIN) s_rxOk = false;
+  for (int c = 0; c < numChannels(); c++) {
+    if (Leds::pin(c) == SERIAL_TX_PIN) s_txCh = c;
+    if (Leds::pin(c) == SERIAL_RX_PIN) s_rxOk = false;
   }
   g_test.mode = TEST_OFF;
   g_test.ch = 0; g_test.a = 0; g_test.b = 0; g_test.section = -1;
@@ -254,11 +263,37 @@ static int parseOnOff(String s) {
   return -1;
 }
 
+// A configured channel (it may only start after a restart)
 static bool argChannel(const String& s, uint8_t& ch, Print& out) {
   long v;
-  if (!parseNum(s, v) || v < 1 || v > NUM_CHANNELS) { fail(out, "Channel must be 1-%d\r\n", NUM_CHANNELS); return false; }
+  if (!parseNum(s, v) || v < 1 || v > g_hw.numCh) { fail(out, "Channel must be 1-%u ('channels <n>' sets how many)\r\n", g_hw.numCh); return false; }
   ch = (uint8_t)(v - 1);
   return true;
+}
+
+// A channel that is running now (for test patterns)
+static bool argLiveChannel(const String& s, uint8_t& ch, Print& out) {
+  if (!argChannel(s, ch, out)) return false;
+  if (ch >= numChannels()) { fail(out, "Channel %d starts after 'save' and 'reboot'.\r\n", ch + 1); return false; }
+  return true;
+}
+
+// GPIO number ("16", "GPIO16") or none/off/-1. Returns false if not a number.
+static bool parsePin(String s, long& v) {
+  s.toLowerCase();
+  if (s == "none" || s == "off" || s == "-1" || s == "-") { v = -1; return true; }
+  if (s.startsWith("gpio")) s = s.substring(4);
+  if (!s.length()) return false;
+  for (size_t k = 0; k < s.length(); k++) if (!isdigit((unsigned char)s[k])) return false;
+  v = s.toInt();
+  return v <= 39;
+}
+
+// After a pin change: show remaining problems (as warnings) and how to apply.
+static void hwChanged(Print& out) {
+  g_dirty = true;
+  if (hwCheck(g_hw, NULL, NULL)) { out.print("Warning:\r\n"); hwCheck(g_hw, NULL, &out); }
+  out.print(hwPending() ? "Pin settings changed. 'save' then 'reboot' to apply.\r\n" : "Same as what is running now.\r\n");
 }
 
 static bool argSection(const String& s, int& idx, Print& out) {
@@ -286,9 +321,15 @@ static void listSections(Print& out) {
 
 static void listChannels(Print& out) {
   out.print(" Ch  GPIO  LEDs  Order  Type\r\n");
-  for (int c = 0; c < NUM_CHANNELS; c++)
-    out.printf(" %2d  %4d  %4u  %-5s  %s%s\r\n", c + 1, LED_PINS[c], g_chan[c].count, orderName(g_chan[c].order),
-               ledTypeName(g_chan[c].type), Leds::ok(c) ? "" : "  (output failed to start)");
+  for (int c = 0; c < g_hw.numCh; c++) {
+    int p = g_hw.ledPin[c];
+    if (p >= 0) out.printf(" %2d  %4d", c + 1, p); else out.printf(" %2d  none", c + 1);
+    out.printf("  %4u  %-5s  %s", g_chan[c].count, orderName(g_chan[c].order), ledTypeName(g_chan[c].type));
+    if (c >= numChannels()) out.print("   (starts after restart)");
+    else if (p != hwBoot().ledPin[c]) { out.print("   (pin after restart; now "); if (Leds::pin(c) >= 0) out.printf("GPIO%d)", Leds::pin(c)); else out.print("off)"); }
+    else if (p >= 0 && !Leds::ok(c)) out.print(hwRun().ledPin[c] < 0 ? "   (off: pin conflict, see 'pins')" : "   (output failed to start)");
+    out.print("\r\n");
+  }
 }
 
 static void showNetwork(Print& out) {
@@ -340,8 +381,19 @@ void writeBackup(Print& out, bool secrets) {
   out.printf("# Steamboat lights configuration backup (firmware %s)\r\n", FW_VERSION);
   out.print("# Restore: web page > Backup & restore, or paste into the serial console.\r\n");
   out.print("# Lines starting with # are ignored. Sections are matched by name.\r\n");
+  out.print("\r\n# Board and pins (apply after reboot)\r\n");
+  out.printf("channels %u\r\n", g_hw.numCh);
+  for (int c = 0; c < g_hw.numCh; c++) {
+    if (g_hw.ledPin[c] >= 0) out.printf("chan %d pin %d\r\n", c + 1, g_hw.ledPin[c]);
+    else out.printf("chan %d pin none\r\n", c + 1);
+  }
+  if (g_hw.relayPin >= 0) out.printf("relay pin %d\r\nrelay low %s\r\n", g_hw.relayPin, g_hw.relayActiveLow ? "on" : "off");
+  else out.print("relay pin none\r\n");
+  if (g_hw.buttonPin >= 0) out.printf("button pin %d\r\n", g_hw.buttonPin); else out.print("button pin none\r\n");
+  if (g_hw.sensorPin >= 0) out.printf("sensor pin %d\r\nsensor invert %s\r\n", g_hw.sensorPin, g_hw.sensorInvert ? "on" : "off");
+  else out.print("sensor pin none\r\n");
   out.print("\r\n# Channels\r\n");
-  for (int c = 0; c < NUM_CHANNELS; c++) {
+  for (int c = 0; c < g_hw.numCh; c++) {
     out.printf("chan %d count %u\r\n", c + 1, g_chan[c].count);
     out.printf("chan %d type %s\r\n", c + 1, ledTypeName(g_chan[c].type));     // before order: type sets a usual order
     out.printf("chan %d order %s\r\n", c + 1, orderName(g_chan[c].order));
@@ -360,11 +412,9 @@ void writeBackup(Print& out, bool secrets) {
   out.printf("floor %u\r\nfade %u\r\n", g_set.spokeFloor, g_set.smokeFade);
   out.printf("wheeldir %s\r\n", g_set.wheelReverse ? "reversed" : "normal");
   out.printf("bg %s\r\n", g_set.testBackground ? "on" : "off");
-  if (sensorPresent()) {
-    out.print("\r\n# Light sensor\r\n");
-    out.printf("sensor dark %u\r\nsensor day %u\r\nsensor delay %u\r\nsensor %s\r\n",
-               g_set.darkLevel, g_set.dayLevel, g_set.sensorDelay, g_set.autoDark ? "on" : "off");
-  }
+  out.print("\r\n# Light sensor\r\n");
+  out.printf("sensor dark %u\r\nsensor day %u\r\nsensor delay %u\r\nsensor %s\r\n",
+             g_set.darkLevel, g_set.dayLevel, g_set.sensorDelay, g_set.autoDark ? "on" : "off");
   out.print("\r\n# Network (applies after reboot)\r\n");
   if (g_net.staSsid[0]) out.printf("wifi ssid %s\r\n", g_net.staSsid);
   else out.print("wifi off\r\n");
@@ -413,7 +463,7 @@ static void doCommand(const String& line, Print& out) {
 
   if (cmd == "p" || cmd == "pixel") {
     uint8_t ch = g_test.ch; String num;
-    if (n >= 3) { if (!argChannel(t[1], ch, out)) return; num = t[2]; }
+    if (n >= 3) { if (!argLiveChannel(t[1], ch, out)) return; num = t[2]; }
     else if (n == 2) num = t[1];
     else { setMode(TEST_PIXEL); reportCursor(out); return; }
     if (!parseNum(num, v) || v < 0 || v >= g_chan[ch].count) { fail(out, "LED must be 0-%d\r\n", g_chan[ch].count - 1); return; }
@@ -425,7 +475,7 @@ static void doCommand(const String& line, Print& out) {
 
   if (cmd == "walk") {
     uint8_t ch = g_test.ch;
-    if (n >= 2 && !argChannel(t[1], ch, out)) return;
+    if (n >= 2 && !argLiveChannel(t[1], ch, out)) return;
     if (n >= 3 && parseNum(t[2], v) && v >= 50) g_test.walkMs = (uint16_t)(v > 10000 ? 10000 : v);
     if (ch != g_test.ch) g_test.a = 0;
     g_test.ch = ch;
@@ -437,7 +487,7 @@ static void doCommand(const String& line, Print& out) {
   if (cmd == "r" || cmd == "range") {
     uint8_t ch; long a, b;
     if (n < 4) { fail(out, "Usage: r <ch> <first> <last>\r\n"); return; }
-    if (!argChannel(t[1], ch, out)) return;
+    if (!argLiveChannel(t[1], ch, out)) return;
     if (!parseNum(t[2], a) || !parseNum(t[3], b)) { fail(out, "Usage: r <ch> <first> <last>\r\n"); return; }
     if (a > b) { long x = a; a = b; b = x; }
     if (a < 0 || b >= g_chan[ch].count) { fail(out, "LEDs must be 0-%d\r\n", g_chan[ch].count - 1); return; }
@@ -449,7 +499,7 @@ static void doCommand(const String& line, Print& out) {
 
   if (cmd == "ruler" || cmd == "fill" || cmd == "rgb") {
     uint8_t ch = g_test.ch;
-    if (n >= 2 && !argChannel(t[1], ch, out)) return;
+    if (n >= 2 && !argLiveChannel(t[1], ch, out)) return;
     g_test.ch = ch;
     if (g_test.a >= g_chan[ch].count) g_test.a = 0;
     if (cmd == "ruler") {
@@ -503,7 +553,63 @@ static void doCommand(const String& line, Print& out) {
   }
 
   if (cmd == "list" || cmd == "ls") { listSections(out); return; }
-  if (cmd == "chans" || cmd == "channels") { listChannels(out); return; }
+  if (cmd == "chans" || cmd == "channels") {
+    if (n >= 2) {
+      if (!parseNum(t[1], v) || v < 1 || v > MAX_CHANNELS) { fail(out, "Channels must be 1-%d\r\n", MAX_CHANNELS); return; }
+      g_hw.numCh = (uint8_t)v;
+      listChannels(out);
+      hwChanged(out);
+      return;
+    }
+    listChannels(out);
+    return;
+  }
+
+  if (cmd == "pins" || cmd == "hw" || cmd == "hardware") {
+    if (n >= 2) {
+      String w = t[1]; w.toLowerCase();
+      if (w != "default" && w != "defaults") { fail(out, "Usage: pins [default]\r\n"); return; }
+      hwDefaults(g_hw);
+      g_dirty = true;
+      hwReport(out);   // also lists problems and says when a restart is needed
+      return;
+    }
+    hwReport(out);
+    return;
+  }
+
+  if (cmd == "preset" || cmd == "board") {
+    if (n < 2) { hwListPresets(out); return; }
+    int i = hwFindPreset(t[1]);
+    if (i < 0) { fail(out, "No preset '%s'. Type 'preset' for the list.\r\n", t[1].c_str()); return; }
+    hwApplyPreset(i, g_hw);
+    out.printf("%s:\r\n", hwPresetTitle(i));
+    if (hwPresetNote(i)[0]) out.printf("(%s)\r\n", hwPresetNote(i));
+    g_dirty = true;
+    hwReport(out);
+    return;
+  }
+
+  if (cmd == "relay" || cmd == "button") {
+    String w = n >= 2 ? t[1] : String(""); w.toLowerCase();
+    bool relay = cmd == "relay";
+    if (w == "pin" && n >= 3) {
+      long p;
+      if (!parsePin(t[2], p)) { fail(out, "Pin is a GPIO number or 'none'\r\n"); return; }
+      if (p >= 0 && !(relay ? ledPinOk(p) : inputPinOk(p))) { fail(out, "GPIO%ld can't be used for the %s\r\n", p, cmd.c_str()); return; }
+      (relay ? g_hw.relayPin : g_hw.buttonPin) = (int8_t)p;
+    } else if (relay && w == "low" && n >= 3 && parseOnOff(t[2]) >= 0) {
+      g_hw.relayActiveLow = (uint8_t)parseOnOff(t[2]);
+    } else if (n < 2) {
+      hwReport(out);
+      return;
+    } else {
+      fail(out, relay ? "Usage: relay pin <gpio|none>  |  relay low on|off\r\n" : "Usage: button pin <gpio|none>\r\n");
+      return;
+    }
+    hwChanged(out);
+    return;
+  }
   if (cmd == "check") { validate(out, true); return; }
 
   if (cmd == "ms" || cmd == "ma" || cmd == "me") {
@@ -594,9 +700,18 @@ static void doCommand(const String& line, Print& out) {
 
   if (cmd == "chan") {
     uint8_t ch;
-    if (n < 4) { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>  |  chan <ch> type <WS2811|WS2812B|WS2811-400K>\r\n"); return; }
+    if (n < 4) { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>  |  chan <ch> type <WS2811|WS2812B|WS2811-400K>  |  chan <ch> pin <gpio|none>\r\n"); return; }
     if (!argChannel(t[1], ch, out)) return;
     String what = t[2]; what.toLowerCase();
+    if (what == "pin" || what == "gpio") {
+      long p;
+      if (!parsePin(t[3], p)) { fail(out, "Pin is a GPIO number or 'none'\r\n"); return; }
+      if (p >= 0 && !ledPinOk(p)) { fail(out, "GPIO%ld can't drive LEDs. Type 'pins' for the ones that can.\r\n", p); return; }
+      g_hw.ledPin[ch] = (int8_t)p;
+      listChannels(out);
+      hwChanged(out);
+      return;
+    }
     if (what == "count") {
       if (!parseNum(t[3], v) || v < 0 || v > MAX_LEDS_PER_CHANNEL) { fail(out, "Count must be 0-%d\r\n", MAX_LEDS_PER_CHANNEL); return; }
       g_chan[ch].count = (uint16_t)v;
@@ -615,7 +730,7 @@ static void doCommand(const String& line, Print& out) {
         out.printf("Color order set to %s, usual for %s. Check with 'rgb %d'; change with 'chan %d order ...'.\r\n",
                    orderName(g_chan[ch].order), ledTypeName(ty), ch + 1, ch + 1);
       }
-    } else { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>  |  chan <ch> type <WS2811|WS2812B|WS2811-400K>\r\n"); return; }
+    } else { fail(out, "Usage: chan <ch> count <n>  |  chan <ch> order <RGB|GRB|...>  |  chan <ch> type <WS2811|WS2812B|WS2811-400K>  |  chan <ch> pin <gpio|none>\r\n"); return; }
     changed();
     listChannels(out);
     return;
@@ -683,14 +798,22 @@ static void doCommand(const String& line, Print& out) {
   }
 
   if (cmd == "sensor" || cmd == "light") {
-    if (!sensorPresent()) { fail(out, "No light sensor configured (LIGHT_SENSOR_PIN is -1).\r\n"); return; }
     if (n >= 2) {
       String w = t[1]; w.toLowerCase();
+      if (w == "pin" && n >= 3) {
+        long p;
+        if (!parsePin(t[2], p)) { fail(out, "Pin is a GPIO number or 'none'\r\n"); return; }
+        if (p >= 0 && !sensorPinOk(p)) { fail(out, "The light sensor needs an ADC1 pin, GPIO32-39 (ADC2 doesn't work with Wi-Fi on)\r\n"); return; }
+        g_hw.sensorPin = (int8_t)p;
+        hwChanged(out);
+        return;
+      }
+      if (w == "invert" && n >= 3 && parseOnOff(t[2]) >= 0) { g_hw.sensorInvert = (uint8_t)parseOnOff(t[2]); hwChanged(out); return; }
       if (w == "on" || w == "off") { g_set.autoDark = (w == "on"); changed(); }
       else if ((w == "dark" || w == "night") && n >= 3 && parseNum(t[2], v) && v >= 0 && v <= 100) { g_set.darkLevel = (uint8_t)v; changed(); }
       else if (w == "day" && n >= 3 && parseNum(t[2], v) && v >= 0 && v <= 100) { g_set.dayLevel = (uint8_t)v; changed(); }
       else if (w == "delay" && n >= 3 && parseNum(t[2], v) && v >= 0 && v <= 3600) { g_set.sensorDelay = (uint16_t)v; changed(); }
-      else { fail(out, "Usage: sensor [on|off | dark <0-100> | day <0-100> | delay <seconds>]\r\n"); return; }
+      else { fail(out, "Usage: sensor [on|off | dark <0-100> | day <0-100> | delay <seconds> | pin <32-39|none> | invert on|off]\r\n"); return; }
       if (g_set.darkLevel >= g_set.dayLevel)
         out.print("Warning: 'dark' should be lower than 'day' (the gap stops it flickering at dusk).\r\n");
     }
@@ -763,7 +886,7 @@ static void doCommand(const String& line, Print& out) {
   if (cmd == "defaults") { loadDefaults(); out.print("Compiled-in show and section defaults loaded (not saved yet; network unchanged).\r\n"); return; }
 
   if (cmd == "info") {
-    out.printf("Steamboat lights %s, %d sections, %d channels\r\n", FW_VERSION, NUM_SECTIONS, NUM_CHANNELS);
+    out.printf("Steamboat lights %s, %d sections, %d channels\r\n", FW_VERSION, NUM_SECTIONS, numChannels());
     out.printf("%s\r\n", netInfo().c_str());
     out.printf("Uptime %lu s, free heap %lu bytes, display %s%s\r\n", (unsigned long)(millis() / 1000),
                (unsigned long)ESP.getFreeHeap(), g_on ? "on" : "off", g_dirty ? ", UNSAVED changes" : "");

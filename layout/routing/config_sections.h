@@ -2,7 +2,7 @@
 // Channel 1 = panel 1 (bow), 2 = panel 2 (centre, controller), 3 = panel 3 (stern / wheel); channel 4 unused.
 // Bulb spacing 3.5 in. Runs are in each section's animation order (the waterline runs bow to stern).
 #define MAX_RUNS_PER_SECTION 16     // largest section here has 14 runs
-static const uint16_t   DEFAULT_CHANNEL_LEDS[NUM_CHANNELS]  = { 175, 331, 291, 0 };
+static const uint16_t   DEFAULT_CHANNEL_LEDS[DEFAULT_CHANNELS]  = { 175, 331, 291, 0 };
 
 static const SectionDef DEFAULT_SECTIONS[] = {
   // name                    role         grp  leds                                                    color

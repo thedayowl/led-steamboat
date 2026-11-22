@@ -1,15 +1,16 @@
 # Steamboat lights: ESP32 firmware
 
-Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-017WL-D** (ESP32, 4 outputs) driving 12 V WS2811 strings. This replaces WLED on the board. You can flash WLED back at any time from install.wled.me.
+Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-017WL-D** (ESP32, 4 outputs) driving 12 V WS2811 strings. Other ESP32 WLED controllers work too: pick the board from a preset list, or set the pins yourself (see [Board and pins](#board-and-pins)). This replaces WLED on the board. You can flash WLED back at any time from install.wled.me.
 
 **What it does**
-- Every part of the boat is a **section**. A section is a list of **runs** of LEDs. Runs can be anywhere on any of the 4 strings, in any order, and forwards or backwards.
+- Every part of the boat is a **section**. A section is a list of **runs** of LEDs. Runs can be anywhere on any of the strings (up to 8 outputs), in any order, and forwards or backwards.
 - Static sections show a solid color.
 - **Waterline**: shifting shades of blue that flow along the section in the order its runs are listed, regardless of how the string is routed. To see it without hardware, open the [waterline simulator](https://thedayowl.github.io/led-steamboat/waterline-simulator.html) ([source](docs/waterline-simulator.html)). It runs the firmware's formula live.
 - **Smoke**: three puffs fade in one after another moving away from the stack, each fainter than the last, then a pause.
 - **Paddle wheel**: three spoke sets light in rotation with a crossfade, so the wheel looks like it's turning. Both effects are in the [smoke and paddle wheel simulator](https://thedayowl.github.io/led-steamboat/smoke-wheel-simulator.html) ([source](docs/smoke-wheel-simulator.html)).
 - **Test tools** on the serial console and the web page, for finding LEDs and mapping sections without recompiling.
-- **Photoresistor** on GPIO33 to turn the display off in daylight.
+- **Photoresistor** (GPIO33 by default) to turn the display off in daylight.
+- **Board presets and runtime pins**: channel count, output GPIOs, relay, button and light sensor are set from the web page or console, with presets for common WLED controllers.
 - **Backup and restore** of the whole configuration as an editable text file.
 - **Firmware updates** straight from GitHub releases, or by upload from the web page or PlatformIO over Wi-Fi.
 - Password-protected web page. Wi-Fi network, setup access point (WPA2) and admin password are all configurable at runtime.
@@ -19,15 +20,16 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 
 | File | What's in it |
 |---|---|
-| `include/config.h` | **Edit this.** GPIOs, first-boot Wi-Fi/AP/admin defaults, default section table, colors, timings, sensor |
+| `include/config.h` | **Edit this.** First-boot defaults (pins, Wi-Fi/AP/admin), default section table, colors, timings, sensor |
 | `include/types.h` | Section/role types |
 | `src/main.cpp` | Startup, main loop, Wi-Fi/OTA, relay, button, light sensor |
+| `src/hardware.cpp` | Channel count and pin settings, conflict checks, board presets |
 | `src/display.cpp` | Sections and runs, effects, test patterns, saved settings |
 | `src/console.cpp` | Serial console commands (the web page uses the same commands), backup |
 | `src/web.cpp` | Web page, restore, firmware upload |
 | `src/ghupdate.cpp` | Checks GitHub for a newer release and installs it over Wi-Fi |
 | `src/migrate.cpp` | First boot after installing over WLED: converts the partition table, imports WLED's Wi-Fi |
-| `src/led_driver.*` | 4-channel WS2811/WS2812B output on the ESP32 RMT peripheral (no external libraries) |
+| `src/led_driver.*` | Up to 8 channels of WS2811/WS2812B output on the ESP32 RMT peripheral (no external libraries) |
 | `scripts/version.py` | Build step: sets the firmware version from the git tag |
 | `scripts/factory.py` | Build step: writes `factory.bin`, the full flash image |
 
@@ -79,7 +81,7 @@ A local `pio run -e usb` produces the same two files: `.pio/build/usb/firmware.b
 
 ## Wiring
 
-**LED outputs.** Terminal order on the board is GPIO16, GPIO12, GPIO4, GPIO2, which are channels 1, 2, 3, 4. To change pins, edit `LED_PINS` in `config.h`.
+**LED outputs.** Terminal order on the board is GPIO16, GPIO12, GPIO4, GPIO2, which are channels 1, 2, 3, 4. Pins can be changed at runtime; see [Board and pins](#board-and-pins).
 
 **Photoresistor (LDR)** on GPIO33 as a voltage divider:
 
@@ -88,13 +90,53 @@ A local `pio run -e usb` produces the same two files: `.pio/build/usb/firmware.b
                 └──[ 10k ]── GND
 ```
 
-More light gives a higher reading. If you wire it the other way round, set `LIGHT_SENSOR_INVERT true`. Point the sensor at the sky and shield it from the display's own glow. If it can see the boat, the boat lighting up can make it think it's daytime.
+More light gives a higher reading. If you wire it the other way round, use `sensor invert on`. Any ADC1 pin (GPIO32-39) works: `sensor pin 34`. Point the sensor at the sky and shield it from the display's own glow. If it can see the boat, the boat lighting up can make it think it's daytime.
 
-**Relay** (GPIO18) switches LED power, active-low, matching Gledopto's WLED setup. If the strings get no power, flip `RELAY_ACTIVE_LOW`.
+**Relay** (GPIO18) switches LED power, active-low, matching Gledopto's WLED setup. If the strings get no power, try `relay low off`.
 
 **Button** (GPIO17): a short press turns the display on/off. Hold it 5 s to start the setup access point.
 
 12 V WS2811 strings still need power injection on long runs. Keep the data run from the board to the first pixel short.
+
+## Board and pins
+
+The channel count (1-8), each channel's GPIO, the relay, the button and the light sensor are settings, like everything else. Set them on the web page (**Board, channels and pins**) or in the console, then **save and restart**: outputs are only set up at boot. Until then `pins` and the web page show what will change. The defaults come from `config.h` and match the GL-C-017WL-D.
+
+**Presets.** `preset` lists the boards below; `preset <name>` sets that board's channel count, output pins, relay and button. The light sensor is kept unless the board uses its pin. Pins come from the makers' pinout guides and manuals. Check them against your board's documentation before restarting, especially where the list says something isn't published.
+
+| Preset | Board | LED outputs | Relay | Button |
+|---|---|---|---|---|
+| `generic` | Any ESP32 board, WLED's defaults | 16 | none | 0 |
+| `gledopto017` | Gledopto GL-C-017WL-D | 16, 12, 4, 2 | 18 (active low) | 17 |
+| `gledopto618` | Gledopto GL-C-618WL (Ethernet unused) | 16, 12, 4, 2 | 18 (active low) | 17 |
+| `gledopto616` | Gledopto GL-C-616WL (Ethernet unused) | 16, 2 | 18 (active low) | 17 |
+| `gledopto015` | Gledopto GL-C-015WL / 015WL-D | 16, 2 | 12 | not published |
+| `dig2go` | QuinLED Dig2Go | 16 | 12 | 0 |
+| `diguno3` | QuinLED Dig-Uno v3 | 16, 3 | 15 (Q1) | 0 |
+| `digquad3` | QuinLED Dig-Quad v3 | 16, 3, 1, 4 | 15 (Q1R) | 0 |
+| `diguno4` | QuinLED Dig-Uno v4 | 2, 4 | not published | 37 |
+| `digquad4` | QuinLED Dig-Quad v4 | 2, 4, 12, 14 | not published | 37 |
+| `digocta2` | QuinLED Dig-Octa, Brainboard-32-8L v2 | 0, 1, 2, 3, 4, 5, 12, 13 | 33 | 34 |
+| `digocta4` | QuinLED Dig-Octa, Brainboard-32-8L v4 | 1, 2, 3, 4, 5, 12, 13, 14 | 33 (polarity not published) | 34 |
+| `athommusic` | Athom ESP32 music controller | 18, 17 | 2 (polarity not published) | 0 |
+| `athompd` | Athom PD energy-meter controller | 18, 5, 16, 17 | none | 0 |
+| `athomdmx` | Athom Ethernet DMX controller V2 (Ethernet, DMX unused) | 5, 16, 4, 12 | 2 (polarity not published) | 0 |
+
+Only original-ESP32 boards are listed; boards built on the ESP32-C3 or S3 need a different firmware build. If the strings get no power after picking a preset, the relay polarity is probably the other way: `relay low on` or `relay low off`.
+
+**Pins by hand:**
+
+| Command | Setting |
+|---|---|
+| `pins` | everything below, what's running now, and any problems |
+| `channels <1-8>` | number of LED outputs (new ones start with 0 LEDs and no GPIO) |
+| `chan <ch> pin <gpio\|none>` | output GPIO: 0-5, 12-19, 21-23, 25-27, 32, 33 |
+| `relay pin <gpio\|none>`, `relay low on\|off` | LED power relay and its polarity (`on` = active low) |
+| `button pin <gpio\|none>` | Function button (to GND; GPIO34-39 need an external pull-up) |
+| `sensor pin <32-39\|none>`, `sensor invert on\|off` | light sensor (ADC1 only: ADC2 doesn't work with Wi-Fi on) |
+| `pins default` | back to the `config.h` defaults |
+
+A pin that can never work (flash pins 6-11, input-only pins for an output) is refused. A clash, such as two channels on one GPIO or an output on the relay pin, is accepted with a warning, so a restore that swaps pins doesn't fail halfway. At boot the clashing output is left off and `check` reports it. Sections on a channel number above the channel count are reported by `check` and not drawn. `defaults` doesn't touch pin settings. With more than 4 outputs, each gets one RMT memory block instead of two, and each channel in use takes 4.8 KB of RAM.
 
 ## Getting to the controls
 
@@ -156,6 +198,7 @@ The section table in `config.h` is generated from the planned string routing in 
 ## Backup and restore
 
 A backup is a plain text file of console commands covering:
+- channel count, pins, relay, button and light sensor GPIOs
 - channel LED counts, LED types and color orders
 - every section's runs, color and direction
 - show settings and light sensor settings
@@ -166,7 +209,7 @@ You can read and edit it.
 - **Back up:** web page > **Backup & restore** > **Download backup**. Tick "include passwords" to also save the Wi-Fi, AP and admin passwords; leave it unticked for a copy that's safe to share. In the console, `backup` prints the same text, and `backup secrets` includes the passwords. From a PC: `curl -u admin:<password> http://steamboat.local/backup -o steamboat-backup.txt`.
 - **Restore:** web page > **Backup & restore** > choose the file > **Restore**. Every line is applied, and any line that fails is listed. With "save after restoring" ticked, the result is saved to flash. You can also paste the file into the serial console, then type `save`.
 - **Matching:** sections are matched by **name**, not position. A backup made before a firmware update that adds, removes or reorders sections still restores. Lines for sections that no longer exist are reported and skipped.
-- Network changes from a restore apply after a reboot.
+- Network and pin changes from a restore apply after a reboot.
 
 ## Firmware updates
 
@@ -198,6 +241,8 @@ Type `help` in the console for the full list. The main ones:
 p <ch> <led>, + - ] [ arrows   cursor          walk <ch> [ms]   auto-step
 r <ch> <a> <b>   ruler <ch>   fill <ch> [RRGGBB]   rgb <ch>   s <section>   ends   blank   run
 list   chans   check
+pins   preset [name]   channels <n>   chan <ch> pin <gpio|none>   pins default
+relay pin <gpio|none>   relay low on|off   button pin <gpio|none>   sensor pin <32-39|none>   sensor invert on|off
 ms <sec>   ma <sec>   me <sec>        start / add run / end run at the cursor
 set <sec> <runs>   add <sec> <runs>   clear <sec>   color <sec> <RRGGBB>   rev <sec> [on|off]
 chan <ch> count <n>   chan <ch> order <RGB|GRB|...>   chan <ch> type <WS2811|WS2812B|WS2811-400K>
@@ -212,10 +257,10 @@ The web page has a console box that takes the same commands. You can also run si
 
 ## GPIO1 note
 
-GPIO1 is the ESP32's serial TX line, which goes to the USB-serial chip. The GL-C-017WL-D doesn't use it for an output. If you set an LED channel to GPIO1 anyway, the firmware shares the pin:
+GPIO1 is the ESP32's serial TX line, which goes to the USB-serial chip. The GL-C-017WL-D doesn't use it for an output, but some boards do (QuinLED Dig-Quad v3, Dig-Octa). When an LED channel is on GPIO1, the firmware shares the pin:
 
 - During the normal show, the pin drives the LEDs.
 - When the console is open, the pin switches back to serial. That channel's string may flicker random colors while text is sent.
 - When you test that channel, the pin goes back to the LEDs and console output pauses. Typing still works, and the lit LED is your feedback.
 
-Mapping that channel is easier from the web page. GPIO3 (serial RX) can't be an LED pin if you want the serial console.
+Mapping that channel is easier from the web page. When a channel is on GPIO3 (serial RX), the serial console is turned off; use the web page.

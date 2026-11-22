@@ -50,6 +50,18 @@ struct Settings {
   uint16_t sensorDelay;      // seconds
 };
 
+// Pins and channel count (saved separately; "defaults" doesn't touch them).
+// Read once at boot: changes take effect after save + restart.
+struct HwCfg {
+  uint8_t numCh;                  // 1-MAX_CHANNELS
+  int8_t  ledPin[MAX_CHANNELS];   // GPIO per channel, -1 = none
+  int8_t  sensorPin;              // light sensor GPIO (ADC1), -1 = none
+  uint8_t sensorInvert;
+  int8_t  relayPin;               // LED power relay, -1 = none
+  uint8_t relayActiveLow;
+  int8_t  buttonPin;              // function button (to GND), -1 = none
+};
+
 // Network settings (saved separately from the show; "defaults" doesn't touch them)
 struct NetCfg {
   char staSsid[33];    // home network ("" = access point only)
@@ -84,12 +96,13 @@ struct TestState {
 };
 
 extern SectionCfg g_sect[];
-extern ChannelCfg g_chan[NUM_CHANNELS];
+extern ChannelCfg g_chan[MAX_CHANNELS];
 extern Settings   g_set;
 extern TestState  g_test;
 extern bool       g_dirty;   // unsaved changes
 extern bool       g_on;      // display on (button / "on"/"off")
 extern NetCfg     g_net;
+extern HwCfg      g_hw;      // saved/edited pin settings (see hwRun() for what is running)
 
 // display.cpp
 const char* sectionName(int i);
@@ -99,7 +112,8 @@ uint16_t    runLength(const Run& r);
 uint16_t    sectionCount(int i);                                   // total LEDs in all runs
 bool        sectionOnChannel(int i, uint8_t ch);
 // Parse "1:0-89, 1:200-170, 2:5" into runs. Returns false and sets err on error.
-bool        parseRuns(const String& text, Run* runs, uint8_t& n, uint8_t maxRuns, String& err);
+// Channels are checked against maxCh (default: the configured channel count).
+bool        parseRuns(const String& text, Run* runs, uint8_t& n, uint8_t maxRuns, String& err, int maxCh = -1);
 String      formatRuns(int i);
 void        displayRender(uint32_t now);
 void        loadConfig();
@@ -117,6 +131,29 @@ const char* ledTypeName(uint8_t t);
 int         parseLedType(const String& s);                         // -1 unknown
 uint8_t     ledTypeOrder(uint8_t t);                               // usual ColorOrder for the type
 const char* roleName(Role r);
+
+// hardware.cpp - pin and channel-count settings
+void          hwDefaults(HwCfg& h);                // compiled-in defaults from config.h
+void          hwSanitize(HwCfg& h);                // clamp values read from flash
+bool          ledPinOk(int pin);                   // GPIO can drive an LED output
+bool          sensorPinOk(int pin);                // GPIO can read the light sensor (ADC1)
+bool          inputPinOk(int pin);                 // GPIO can read a button
+int           hwPresetCount();
+const char*   hwPresetName(int i);                 // short name used by 'preset <name>'
+const char*   hwPresetTitle(int i);                // board name for people
+const char*   hwPresetNote(int i);                 // caveat, or ""
+int           hwFindPreset(const String& name);    // -1 none
+void          hwApplyPreset(int i, HwCfg& h);      // channels, LED pins, relay, button (sensor kept)
+void          hwListPresets(Print& out);
+int           hwCurrentPreset();                   // preset matching g_hw, -1 none
+int           hwCheck(const HwCfg& in, HwCfg* use, Print* out, const char* prefix = "  ");  // problems; 'use' = conflicts removed
+void          hwStart();                           // at boot: start outputs and sensor from g_hw
+const HwCfg&  hwRun();                             // what was started at boot
+const HwCfg&  hwBoot();                            // g_hw as it was at boot
+bool          hwPending();                         // g_hw differs from what is running
+uint8_t       numChannels();                       // channels running now
+void          hwReport(Print& out);                // 'pins' command
+void          ledsBlank();                         // all outputs dark, now
 
 // console.cpp
 void consoleBegin();

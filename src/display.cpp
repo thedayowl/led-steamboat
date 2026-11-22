@@ -5,7 +5,7 @@
 #include "led_driver.h"
 
 SectionCfg g_sect[NUM_SECTIONS];
-ChannelCfg g_chan[NUM_CHANNELS];
+ChannelCfg g_chan[MAX_CHANNELS];
 Settings   g_set;
 TestState  g_test;
 bool       g_dirty = false;
@@ -16,6 +16,7 @@ static Preferences s_prefs;
 static const char* kNs = "steamboat";
 static const uint32_t kSettingsVersion = 2;
 static const uint32_t kNetVersion = 1;
+static const uint32_t kHwVersion = 1;
 
 // ---------------------------------------------------------------- helpers
 
@@ -89,7 +90,8 @@ static bool parseUInt(const String& s, long& v) {
   return true;
 }
 
-bool parseRuns(const String& text, Run* runs, uint8_t& n, uint8_t maxRuns, String& err) {
+bool parseRuns(const String& text, Run* runs, uint8_t& n, uint8_t maxRuns, String& err, int maxCh) {
+  if (maxCh < 0) maxCh = g_hw.numCh;
   String t;
   for (size_t i = 0; i < text.length(); i++) if (text[i] != ' ' && text[i] != '\t') t += text[i];  // spaces ignored
   n = 0;
@@ -105,8 +107,8 @@ bool parseRuns(const String& text, Run* runs, uint8_t& n, uint8_t maxRuns, Strin
     int colon = item.indexOf(':');
     if (colon >= 0) {
       long c;
-      if (!parseUInt(item.substring(0, colon), c) || c < 1 || c > NUM_CHANNELS) {
-        err = "bad channel in '" + item + "' (1-" + String(NUM_CHANNELS) + ")"; return false;
+      if (!parseUInt(item.substring(0, colon), c) || c < 1 || c > maxCh) {
+        err = "bad channel in '" + item + "' (1-" + String(maxCh) + "; 'channels <n>' sets how many)"; return false;
       }
       ch = (int)c - 1;
       item = item.substring(colon + 1);
@@ -225,7 +227,7 @@ static uint32_t tableSignature() {
     for (const char* p = sectionName(i); *p; p++) { h ^= (uint8_t)*p; h *= 16777619u; }
     h ^= 0xFF; h *= 16777619u;
   }
-  h ^= NUM_CHANNELS; h *= 16777619u;
+  h ^= 4; h *= 16777619u;   // was the channel count when it was fixed at 4; kept so saved sections survive
   h ^= sizeof(SectionCfg); h *= 16777619u;
   h ^= MAX_RUNS_PER_SECTION; h *= 16777619u;
   return h;
@@ -247,17 +249,19 @@ static void defaultSettings() {
 }
 
 static void defaultLayout() {
-  for (int c = 0; c < NUM_CHANNELS; c++) {
-    g_chan[c].count = DEFAULT_CHANNEL_LEDS[c] > MAX_LEDS_PER_CHANNEL ? MAX_LEDS_PER_CHANNEL : DEFAULT_CHANNEL_LEDS[c];
-    g_chan[c].order = DEFAULT_CHANNEL_ORDER[c];
-    g_chan[c].type  = DEFAULT_CHANNEL_TYPE[c];
+  for (int c = 0; c < MAX_CHANNELS; c++) {
+    bool d = c < DEFAULT_CHANNELS;
+    uint16_t n = d ? DEFAULT_CHANNEL_LEDS[c] : 0;
+    g_chan[c].count = n > MAX_LEDS_PER_CHANNEL ? MAX_LEDS_PER_CHANNEL : n;
+    g_chan[c].order = d ? DEFAULT_CHANNEL_ORDER[c] : ORDER_RGB;
+    g_chan[c].type  = d ? DEFAULT_CHANNEL_TYPE[c] : LED_WS2811;
   }
   memset(g_sect, 0, sizeof(SectionCfg) * NUM_SECTIONS);
   for (int i = 0; i < NUM_SECTIONS; i++) {
     const SectionDef& d = DEFAULT_SECTIONS[i];
     g_sect[i].color = d.color & 0xFFFFFF;
     String err;
-    if (!parseRuns(d.leds ? d.leds : "", g_sect[i].runs, g_sect[i].nruns, MAX_RUNS_PER_SECTION, err)) {
+    if (!parseRuns(d.leds ? d.leds : "", g_sect[i].runs, g_sect[i].nruns, MAX_RUNS_PER_SECTION, err, MAX_CHANNELS)) {
       Serial.printf("config.h section '%s': %s\r\n", d.name, err.c_str());
       g_sect[i].nruns = 0;
     }
@@ -279,7 +283,7 @@ static void defaultNet() {
 }
 
 static void applyCounts() {
-  for (int c = 0; c < NUM_CHANNELS; c++) Leds::setCount(c, g_chan[c].count);
+  for (int c = 0; c < numChannels(); c++) Leds::setCount(c, g_chan[c].count);
 }
 
 void loadDefaults() {
@@ -293,7 +297,11 @@ void loadConfig() {
   defaultSettings();
   defaultLayout();
   defaultNet();
+  hwDefaults(g_hw);
   s_prefs.begin(kNs, true);
+  if (s_prefs.getUInt("hwv", 0) == kHwVersion && s_prefs.getBytesLength("hw") == sizeof(g_hw))
+    s_prefs.getBytes("hw", &g_hw, sizeof(g_hw));
+  hwSanitize(g_hw);
   if (s_prefs.getUInt("netv", 0) == kNetVersion && s_prefs.getBytesLength("net") == sizeof(g_net)) {
     s_prefs.getBytes("net", &g_net, sizeof(g_net));
     g_net.staSsid[sizeof(g_net.staSsid) - 1] = 0;  g_net.staPass[sizeof(g_net.staPass) - 1] = 0;
@@ -305,13 +313,15 @@ void loadConfig() {
     s_prefs.getBytes("set", &g_set, sizeof(g_set));
   }
   if (s_prefs.getUInt("sig", 0) == tableSignature()) {
-    if (s_prefs.getBytesLength("chan") == sizeof(g_chan)) s_prefs.getBytes("chan", g_chan, sizeof(g_chan));
+    // Older firmware saved exactly 4 channels; read however many were saved.
+    size_t len = s_prefs.getBytesLength("chan");
+    if (len && len % sizeof(ChannelCfg) == 0 && len <= sizeof(g_chan)) s_prefs.getBytes("chan", g_chan, len);
     if (s_prefs.getBytesLength("sect") == sizeof(SectionCfg) * NUM_SECTIONS)
       s_prefs.getBytes("sect", g_sect, sizeof(SectionCfg) * NUM_SECTIONS);
   }
   s_prefs.end();
   // Sanity
-  for (int c = 0; c < NUM_CHANNELS; c++) {
+  for (int c = 0; c < MAX_CHANNELS; c++) {
     if (g_chan[c].count > MAX_LEDS_PER_CHANNEL) g_chan[c].count = MAX_LEDS_PER_CHANNEL;
     if (g_chan[c].order >= ORDER_COUNT) g_chan[c].order = ORDER_RGB;
     if (g_chan[c].type >= LED_TYPE_COUNT) g_chan[c].type = LED_WS2811;
@@ -320,7 +330,7 @@ void loadConfig() {
     SectionCfg& s = g_sect[i];
     if (s.nruns > MAX_RUNS_PER_SECTION) s.nruns = 0;
     for (uint8_t r = 0; r < s.nruns; r++)
-      if (s.runs[r].ch >= NUM_CHANNELS || runMax(s.runs[r]) >= MAX_LEDS_PER_CHANNEL) { s.nruns = 0; break; }
+      if (s.runs[r].ch >= MAX_CHANNELS || runMax(s.runs[r]) >= MAX_LEDS_PER_CHANNEL) { s.nruns = 0; break; }
   }
   applyCounts();
   g_dirty = false;
@@ -333,10 +343,14 @@ bool saveConfig() {
   ok &= s_prefs.putUInt("setv", kSettingsVersion) > 0;
   ok &= s_prefs.putBytes("set", &g_set, sizeof(g_set)) == sizeof(g_set);
   ok &= s_prefs.putUInt("sig", tableSignature()) > 0;
-  ok &= s_prefs.putBytes("chan", g_chan, sizeof(g_chan)) == sizeof(g_chan);
+  // At least 4 channels, so older firmware (which wants exactly 4) can still read them.
+  size_t chanBytes = sizeof(ChannelCfg) * (g_hw.numCh > 4 ? g_hw.numCh : 4);
+  ok &= s_prefs.putBytes("chan", g_chan, chanBytes) == chanBytes;
   ok &= s_prefs.putBytes("sect", g_sect, sectBytes) == sectBytes;
   ok &= s_prefs.putUInt("netv", kNetVersion) > 0;
   ok &= s_prefs.putBytes("net", &g_net, sizeof(g_net)) == sizeof(g_net);
+  ok &= s_prefs.putUInt("hwv", kHwVersion) > 0;
+  ok &= s_prefs.putBytes("hw", &g_hw, sizeof(g_hw)) == sizeof(g_hw);
   s_prefs.end();
   applyCounts();
   if (ok) g_dirty = false;
@@ -349,12 +363,19 @@ int validate(Print& out, bool verbose) {
   int errors = 0, warnings = 0;
   static uint8_t owner[MAX_LEDS_PER_CHANNEL];
 
+  // Pin settings: problems here turn an output or the sensor off at boot.
+  errors += hwCheck(g_hw, NULL, &out, "  ERROR: ");
+
   for (int i = 0; i < NUM_SECTIONS; i++) {
     const SectionCfg& s = g_sect[i];
     if (s.nruns == 0) { out.printf("  warning: #%d %s has no LEDs\r\n", i + 1, sectionName(i)); warnings++; continue; }
     for (uint8_t r = 0; r < s.nruns; r++) {
       const Run& run = s.runs[r];
-      if (runMax(run) >= g_chan[run.ch].count) {
+      if (run.ch >= g_hw.numCh) {
+        out.printf("  ERROR: #%d %s run %d (%d:%u-%u) is on channel %d, but there are only %u channels\r\n",
+                   i + 1, sectionName(i), r + 1, run.ch + 1, run.first, run.last, run.ch + 1, g_hw.numCh);
+        errors++;
+      } else if (runMax(run) >= g_chan[run.ch].count) {
         out.printf("  ERROR: #%d %s run %d (%d:%u-%u) goes past the end of channel %d (%u LEDs, 0-%d)\r\n",
                    i + 1, sectionName(i), r + 1, run.ch + 1, run.first, run.last, run.ch + 1,
                    g_chan[run.ch].count, g_chan[run.ch].count - 1);
@@ -362,7 +383,7 @@ int validate(Print& out, bool verbose) {
       }
     }
   }
-  for (int c = 0; c < NUM_CHANNELS; c++) {
+  for (int c = 0; c < g_hw.numCh; c++) {
     uint16_t n = g_chan[c].count;
     memset(owner, 0xFF, n);
     for (int i = 0; i < NUM_SECTIONS; i++) {
@@ -402,7 +423,7 @@ int validate(Print& out, bool verbose) {
 // ---------------------------------------------------------------- drawing
 
 static inline void setPx(uint8_t ch, uint16_t i, uint32_t c, uint8_t level = 255) {
-  if (ch >= NUM_CHANNELS || i >= g_chan[ch].count) return;
+  if (ch >= numChannels() || i >= Leds::count(ch)) return;
   uint8_t* p = Leds::buffer(ch) + i * 3;
   uint16_t l = (uint16_t)level + 1;
   p[0] = (uint8_t)((((c >> 16) & 0xFF) * l) >> 8);
@@ -535,13 +556,13 @@ static void drawShow(uint8_t dim) {
   }
 }
 
-static void clearChannel(uint8_t c) { memset(Leds::buffer(c), 0, g_chan[c].count * 3); }
+static void clearChannel(uint8_t c) { if (c < numChannels()) memset(Leds::buffer(c), 0, Leds::count(c) * 3); }
 
 static void drawTest(uint32_t now) {
   const uint8_t bgDim = 22;
   bool blink = (now / 300) & 1;
   if (g_set.testBackground && g_test.mode != TEST_BLANK) drawShow(bgDim);
-  uint8_t ch = g_test.ch < NUM_CHANNELS ? g_test.ch : 0;
+  uint8_t ch = g_test.ch < numChannels() ? g_test.ch : 0;
   uint16_t n = g_chan[ch].count;
 
   switch (g_test.mode) {
@@ -573,7 +594,7 @@ static void drawTest(uint32_t now) {
       }
       break;
     case TEST_ENDS:
-      for (int c = 0; c < NUM_CHANNELS; c++) clearChannel(c);
+      for (int c = 0; c < numChannels(); c++) clearChannel(c);
       for (int i = 0; i < NUM_SECTIONS; i++) {
         if (!g_sect[i].nruns) continue;
         fillSection(i, g_sect[i].color, 60);
@@ -605,7 +626,7 @@ static void drawTest(uint32_t now) {
 
 void displayRender(uint32_t now) {
   advanceClocks(now);
-  for (int c = 0; c < NUM_CHANNELS; c++) clearChannel(c);
+  for (int c = 0; c < numChannels(); c++) clearChannel(c);
   if (!displayActive() && g_test.mode == TEST_OFF) return;
   if (g_test.mode == TEST_OFF) drawShow(255);
   else drawTest(now);
