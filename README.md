@@ -83,14 +83,16 @@ A local `pio run -e usb` produces the same two files: `.pio/build/usb/firmware.b
 
 **LED outputs.** Terminal order on the board is GPIO16, GPIO12, GPIO4, GPIO2, which are channels 1, 2, 3, 4. Pins can be changed at runtime; see [Board and pins](#board-and-pins).
 
-**Photoresistor (LDR)** on GPIO33 as a voltage divider:
+**Photoresistor (LDR)** on GPIO33 as a voltage divider. The 10k pull-up goes inside the case, so only two wires go out to the LDR: GPIO33 and GND, both on the GPIO33 connector.
 
 ```
-3.3V ──[ LDR ]──┬── GPIO33
-                └──[ 10k ]── GND
+        inside the case           │  outside (GPIO33 connector)
+3.3V ──[ 10k ]──● GPIO33 ─────────┼──┐
+                                  │ [ LDR ]
+GND ──────────────────────────────┼──┘
 ```
 
-More light gives a higher reading. If you wire it the other way round, use `sensor invert on`. Any ADC1 pin (GPIO32-39) works: `sensor pin 34`. Point the sensor at the sky and shield it from the display's own glow. If it can see the boat, the boat lighting up can make it think it's daytime.
+More light lowers the LDR's resistance and pulls the pin lower. The sensor is set to inverted by default (`sensor invert on`), so the light level still reads higher in daylight. If you wire it the other way round (LDR to 3.3V, 10k to GND), use `sensor invert off`. Any ADC1 pin (GPIO32-39) works: `sensor pin 34`. Point the sensor at the sky and shield it from the display's own glow. If it can see the boat, the boat lighting up can make it think it's daytime.
 
 **Relay** (GPIO18) switches LED power, active-low, matching Gledopto's WLED setup. If the strings get no power, try `relay low off`.
 

@@ -52,12 +52,14 @@ static const LedType    DEFAULT_CHANNEL_TYPE[DEFAULT_CHANNELS]  = { LED_WS2811, 
 #define DEFAULT_BUTTON_PIN       17
 
 // Photoresistor (LDR) for automatic daytime off. Use an ADC1 pin (32-39) so it
-// works with Wi-Fi on. Wiring: 3.3V -> LDR -> GPIO33 -> 10k resistor -> GND
-// (more light = higher reading). If you wire the LDR to GND and the resistor to
-// 3.3V instead, set the sensor to inverted. -1 = not fitted. First-boot
-// defaults; changeable at runtime ("sensor pin 34", "sensor invert on").
+// works with Wi-Fi on. Wiring: 10k resistor from 3.3V to GPIO33 inside the case,
+// LDR from GPIO33 to GND outside, so only GPIO33 and GND leave the case. More
+// light pulls the pin lower, so the reading is inverted (the firmware flips it:
+// more light = higher %). If you wire the LDR to 3.3V and the resistor to GND
+// instead, set the sensor to not inverted. -1 = not fitted. First-boot
+// defaults; changeable at runtime ("sensor pin 34", "sensor invert off").
 #define DEFAULT_SENSOR_PIN     33
-#define DEFAULT_SENSOR_INVERT  false
+#define DEFAULT_SENSOR_INVERT  true
 // Defaults (changeable at runtime with the "sensor" command or web page):
 #define DEFAULT_AUTO_DARK    false   // turn on with "sensor on" after checking the readings
 #define DEFAULT_DARK_LEVEL   20      // % light: display turns ON when it gets darker than this
