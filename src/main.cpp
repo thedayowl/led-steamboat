@@ -173,6 +173,11 @@ void setup() {
     analogReadResolution(12);
     analogSetPinAttenuation(hw.sensorPin, ADC_11db);   // full 0-3.3 V range
   }
+  // The connector pin jumpered to the sensor pin: floating input, no pulls.
+  int jp = SENSOR_JUMPER_PIN;
+  bool jpUsed = jp == hw.relayPin || jp == hw.buttonPin || jp == hw.sensorPin;
+  for (int c = 0; c < hw.numCh; c++) if (hw.ledPin[c] == jp) jpUsed = true;
+  if (jp >= 0 && !jpUsed && inputPinOk(jp)) pinMode(jp, INPUT);
   if (validate(Serial, false)) Serial.print("Section table has errors; type 'check' in the console.\r\n");
   sensorTick(millis());        // first reading decides day/night immediately
   consoleBegin();              // after this, serial output may be muted if GPIO1 drives LEDs

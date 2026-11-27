@@ -10,7 +10,7 @@ Standalone firmware for the stern-wheel steamboat display on a **GLEDOPTO GL-C-0
 - **Paddle wheel**: three spoke sets light in rotation with a crossfade, so the wheel looks like it's turning. Both effects are in the [smoke and paddle wheel simulator](https://thedayowl.github.io/led-steamboat/smoke-wheel-simulator.html) ([source](docs/smoke-wheel-simulator.html)).
 - **The whole boat**: the [display simulator](https://thedayowl.github.io/led-steamboat/display-simulator.html) ([source](docs/display-simulator.html)) shows the full display bulb by bulb, with the static sections, waterline, smoke and paddle wheel all running together.
 - **Test tools** on the serial console and the web page, for finding LEDs and mapping sections without recompiling.
-- **Photoresistor** (GPIO33 by default) to turn the display off in daylight.
+- **Photoresistor** on the GPIO13 connector (read on GPIO33) to turn the display off in daylight.
 - **Board presets and runtime pins**: channel count, output GPIOs, relay, button and light sensor are set from the web page or console, with presets for common WLED controllers.
 - **Backup and restore** of the whole configuration as an editable text file.
 - **Firmware updates** straight from GitHub releases, or by upload from the web page or PlatformIO over Wi-Fi.
@@ -84,16 +84,22 @@ A local `pio run -e usb` produces the same two files: `.pio/build/usb/firmware.b
 
 **LED outputs.** Terminal order on the board is GPIO16, GPIO12, GPIO4, GPIO2, which are channels 1, 2, 3, 4. Pins can be changed at runtime; see [Board and pins](#board-and-pins).
 
-**Photoresistor (LDR)** on GPIO33 as a voltage divider. The 10k pull-up goes inside the case, so only two wires go out to the LDR: GPIO33 and GND, both on the GPIO33 connector.
+**Photoresistor (LDR)** on the board's GPIO13 connector, read on GPIO33. The connector has a signal pin and a ground lug but no 3.3 V, so the 10k pull-up goes inside the case and only two wires go out to the LDR.
+
+GPIO13 can't be used to read the sensor: it is on the ESP32's ADC2, which can't take readings while Wi-Fi is on. So inside the case, a jumper joins the GPIO13 connector to GPIO33 (ADC1), and the firmware reads GPIO33. It keeps GPIO13 a floating input so it doesn't affect the reading (`SENSOR_JUMPER_PIN` in `config.h`).
 
 ```
-        inside the case           │  outside (GPIO33 connector)
-3.3V ──[ 10k ]──● GPIO33 ─────────┼──┐
-                                  │ [ LDR ]
-GND ──────────────────────────────┼──┘
+           inside the case                │  outside (GPIO13 connector)
+3.3V ──[ 10k ]──● GPIO33                  │
+                │                         │
+                └── jumper ──● GPIO13 ────┼──┐
+                                          │ [ LDR ]
+GND ──────────────────────────────────────┼──┘ (ground lug)
 ```
 
-More light lowers the LDR's resistance and pulls the pin lower. The sensor is set to inverted by default (`sensor invert on`), so the light level still reads higher in daylight. If you wire it the other way round (LDR to 3.3V, 10k to GND), use `sensor invert off`. Any ADC1 pin (GPIO32-39) works: `sensor pin 34`. Point the sensor at the sky and shield it from the display's own glow. If it can see the boat, the boat lighting up can make it think it's daytime.
+If GPIO33 isn't easy to reach, any ADC1 pin works (GPIO32-39; GPIO32 is the microphone on boards that have one): jumper to it and set `sensor pin 34` (or whichever).
+
+More light lowers the LDR's resistance and pulls the pin lower. The sensor is set to inverted by default (`sensor invert on`), so the light level still reads higher in daylight. If you wire it the other way round (LDR to 3.3V, 10k to GND), use `sensor invert off`. Point the sensor at the sky and shield it from the display's own glow. If it can see the boat, the boat lighting up can make it think it's daytime.
 
 **Relay** (GPIO18) switches LED power, active-low, matching Gledopto's WLED setup. If the strings get no power, try `relay low off`.
 

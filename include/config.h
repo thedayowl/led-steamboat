@@ -11,7 +11,7 @@
 // Board: GLEDOPTO GL-C-017WL-D (ESP32, 4 outputs)
 //   Terminal order on the board: GPIO16  GPIO12  GPIO4  GPIO2
 //   Relay GPIO18 (active LOW, same as Gledopto's "Relay 18 + Invert" WLED setup)
-//   Function button GPIO17, spare GPIO13
+//   Function button GPIO17; GPIO13 connector = light sensor (jumpered to GPIO33)
 // ============================================================================
 
 // Channel count and GPIOs below are first-boot defaults. They can be changed at
@@ -51,15 +51,21 @@ static const LedType    DEFAULT_CHANNEL_TYPE[DEFAULT_CHANNELS]  = { LED_WS2811, 
 // Wi-Fi access point. -1 = none. Changeable at runtime ("button pin 17").
 #define DEFAULT_BUTTON_PIN       17
 
-// Photoresistor (LDR) for automatic daytime off. Use an ADC1 pin (32-39) so it
-// works with Wi-Fi on. Wiring: 10k resistor from 3.3V to GPIO33 inside the case,
-// LDR from GPIO33 to GND outside, so only GPIO33 and GND leave the case. More
-// light pulls the pin lower, so the reading is inverted (the firmware flips it:
-// more light = higher %). If you wire the LDR to 3.3V and the resistor to GND
+// Photoresistor (LDR) for automatic daytime off. It must be read on an ADC1 pin
+// (32-39): ADC2 pins can't be read while Wi-Fi is on.
+// Wiring on the GL-C-017WL-D: the LDR goes on the GPIO13 connector (signal and
+// ground lug). GPIO13 is ADC2, so inside the case a jumper joins the GPIO13
+// connector to GPIO33, and a 10k resistor goes from 3.3V to GPIO33. More light
+// pulls the pin lower, so the reading is inverted (the firmware flips it: more
+// light = higher %). If you wire the LDR to 3.3V and the resistor to GND
 // instead, set the sensor to not inverted. -1 = not fitted. First-boot
 // defaults; changeable at runtime ("sensor pin 34", "sensor invert off").
 #define DEFAULT_SENSOR_PIN     33
 #define DEFAULT_SENSOR_INVERT  true
+// A pin jumpered to the sensor pin (the GPIO13 connector above). At boot it is
+// set to a plain input with no pull resistor, so it doesn't skew the reading,
+// unless an LED output, the relay or the button uses it. -1 = none.
+#define SENSOR_JUMPER_PIN      13
 // Defaults (changeable at runtime with the "sensor" command or web page):
 #define DEFAULT_AUTO_DARK    false   // turn on with "sensor on" after checking the readings
 #define DEFAULT_DARK_LEVEL   20      // % light: display turns ON when it gets darker than this
